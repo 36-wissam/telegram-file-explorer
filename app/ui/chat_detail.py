@@ -1,7 +1,7 @@
 """Chat detail view widget for PySide6."""
 
 from pathlib import Path
-from PySide6.QtCore import Qt, QRectF
+from PySide6.QtCore import Qt, QRectF, Signal
 from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPixmap, QBrush
 from PySide6.QtWidgets import (
     QFrame,
@@ -18,6 +18,8 @@ from .chat_list import TYPE_COLORS
 
 class ChatDetailWidget(QWidget):
     """Displays detailed view of the currently selected Telegram chat."""
+
+    index_chat_requested = Signal(int)  # Emits chat_id to open indexing manager
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -145,35 +147,52 @@ class ChatDetailWidget(QWidget):
 
         content_layout.addWidget(self.info_box)
 
-        # Stage 5 Next Step Container
-        self.stage5_box = QFrame()
-        self.stage5_box.setStyleSheet(
+        # Indexing Action Container
+        self.indexing_box = QFrame()
+        self.indexing_box.setStyleSheet(
             """
             QFrame {
                 background-color: #232428;
-                border: 1px dashed #35373c;
+                border: 1px solid #35373c;
                 border-radius: 8px;
-                padding: 20px;
+                padding: 16px;
             }
             """
         )
-        stage5_layout = QVBoxLayout(self.stage5_box)
-        stage5_layout.setAlignment(Qt.AlignCenter)
-        stage5_layout.setSpacing(8)
+        idx_layout = QVBoxLayout(self.indexing_box)
+        idx_layout.setAlignment(Qt.AlignCenter)
+        idx_layout.setSpacing(10)
 
-        stage5_title = QLabel("📂 Media & File Indexing Ready")
-        stage5_title.setStyleSheet("color: #5865f2; font-weight: bold; font-size: 14px;")
-        stage5_title.setAlignment(Qt.AlignCenter)
-        stage5_layout.addWidget(stage5_title)
+        idx_title = QLabel("⚡ Media & File Indexing")
+        idx_title.setStyleSheet("color: #00aff4; font-weight: bold; font-size: 14px;")
+        idx_title.setAlignment(Qt.AlignCenter)
+        idx_layout.addWidget(idx_title)
 
-        stage5_desc = QLabel(
-            "This chat is ready for scanning and indexing. File extraction and SQLite metadata storage will activate in Stage 5."
+        idx_desc = QLabel(
+            "Scan this chat to discover, index, search, and download all shared files and media."
         )
-        stage5_desc.setStyleSheet("color: #949ba4; font-size: 12px;")
-        stage5_desc.setAlignment(Qt.AlignCenter)
-        stage5_layout.addWidget(stage5_desc)
+        idx_desc.setStyleSheet("color: #949ba4; font-size: 12px;")
+        idx_desc.setAlignment(Qt.AlignCenter)
+        idx_layout.addWidget(idx_desc)
 
-        content_layout.addWidget(self.stage5_box)
+        self.btn_index_chat = QPushButton("⚡ Index This Chat Now")
+        self.btn_index_chat.setStyleSheet(
+            """
+            QPushButton {
+                background-color: #00aff4;
+                color: white;
+                font-weight: bold;
+                padding: 8px 18px;
+                border-radius: 6px;
+                border: none;
+            }
+            QPushButton:hover { background-color: #0098d4; }
+            """
+        )
+        self.btn_index_chat.clicked.connect(self._on_index_chat_clicked)
+        idx_layout.addWidget(self.btn_index_chat, 0, Qt.AlignCenter)
+
+        content_layout.addWidget(self.indexing_box)
 
         layout.addWidget(self.content_card)
         layout.addStretch()
@@ -244,3 +263,8 @@ class ChatDetailWidget(QWidget):
 
         painter.end()
         return target_pixmap
+
+    def _on_index_chat_clicked(self):
+        """Emit signal requesting indexing of this specific chat."""
+        if self.chat:
+            self.index_chat_requested.emit(self.chat.id)

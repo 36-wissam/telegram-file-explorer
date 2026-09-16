@@ -8,6 +8,7 @@ from .file_explorer import FileExplorerWidget
 from .filter_bar import AdvancedFilterBar, AdvancedFilterCriteria
 from .preview_panel import PreviewPanel, PreviewDialog
 from .download_manager import DownloadManagerDialog, DownloadRowWidget
+from .indexing_dialog import IndexingDialog
 
 __all__ = [
     "MainWindow",
@@ -22,6 +23,7 @@ __all__ = [
     "PreviewDialog",
     "DownloadManagerDialog",
     "DownloadRowWidget",
+    "IndexingDialog",
 ]
 
 

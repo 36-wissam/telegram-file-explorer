@@ -1,5 +1,6 @@
 """Main application window for Telegram File Explorer."""
 
+from typing import List, Optional
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QAction, QFont, QIcon
 from PySide6.QtWidgets import (
@@ -54,7 +55,9 @@ class MainWindow(QMainWindow):
         self.repo = repo or DatabaseRepository()
         from ..services.downloader import DownloadManager
         self.download_manager = DownloadManager(self.client_manager)
-
+        from ..services.indexing_manager import IndexingManager
+        self.indexing_manager = IndexingManager(self.client_manager, db_path=self.repo.db_path)
+        self.indexing_manager.indexing_finished.connect(self._on_indexing_finished)
 
         self._init_menu_bar()
         self._init_ui()
@@ -99,6 +102,13 @@ class MainWindow(QMainWindow):
         self.action_view_downloads.setShortcut("Ctrl+J")
         self.action_view_downloads.triggered.connect(self.open_download_manager)
         downloads_menu.addAction(self.action_view_downloads)
+
+        # Tools Menu
+        tools_menu = menu_bar.addMenu("&Tools")
+        self.action_index_manager = QAction("⚡ &Indexing Manager...", self)
+        self.action_index_manager.setShortcut("Ctrl+I")
+        self.action_index_manager.triggered.connect(lambda: self.open_indexing_manager())
+        tools_menu.addAction(self.action_index_manager)
 
         # Help Menu
         help_menu = menu_bar.addMenu("&Help")
@@ -225,6 +235,12 @@ class MainWindow(QMainWindow):
         self.btn_nav_files.clicked.connect(lambda: self._switch_main_view(1))
         mb_layout.addWidget(self.btn_nav_files)
 
+        mb_layout.addSpacing(12)
+        self.btn_open_indexer = QPushButton("⚡ Index Media...")
+        self.btn_open_indexer.setStyleSheet("background-color: #2b2d31; color: #00aff4; font-weight: bold;")
+        self.btn_open_indexer.clicked.connect(lambda: self.open_indexing_manager())
+        mb_layout.addWidget(self.btn_open_indexer)
+
         mb_layout.addStretch()
         page_layout.addWidget(mode_bar)
 
@@ -243,6 +259,7 @@ class MainWindow(QMainWindow):
         chat_splitter.addWidget(self.chat_list_widget)
 
         self.chat_detail_widget = ChatDetailWidget()
+        self.chat_detail_widget.index_chat_requested.connect(lambda cid: self.open_indexing_manager(preselected_chat_id=cid))
         chat_splitter.addWidget(self.chat_detail_widget)
         chat_splitter.setStretchFactor(0, 0)
         chat_splitter.setStretchFactor(1, 1)
@@ -255,6 +272,41 @@ class MainWindow(QMainWindow):
 
         page_layout.addWidget(self.view_stack)
         return page
+
+    def open_indexing_manager(self, preselected_chat_id: Optional[int] = None):
+        """Open the media indexing management dialog."""
+        from .indexing_dialog import IndexingDialog
+        chats = self.chat_list_widget.chats
+        if not chats:
+            db_chats = self.repo.get_chats()
+            from ..telegram.chats import ChatType, TelegramChat
+            chats = [
+                TelegramChat(
+                    id=c.id,
+                    title=c.title,
+                    chat_type=ChatType(c.chat_type) if c.chat_type in [e.value for e in ChatType] else ChatType.UNKNOWN,
+                )
+                for c in db_chats
+            ]
+        dialog = IndexingDialog(
+            self.indexing_manager,
+            available_chats=chats,
+            preselected_chat_id=preselected_chat_id,
+            parent=self,
+        )
+        dialog.exec()
+
+    def _on_indexing_finished(self, total_files: int, is_cancelled: bool):
+        """Update file explorer and chat filter when indexing completes."""
+        if hasattr(self, "file_explorer_widget"):
+            self.file_explorer_widget.refresh_chats_filter()
+            self.file_explorer_widget.reload_files()
+        status_txt = (
+            f"Indexing finished: {total_files} files indexed."
+            if not is_cancelled
+            else "Indexing cancelled."
+        )
+        self.statusBar().showMessage(status_txt, 6000)
 
     def open_download_manager(self):
         """Open the downloads inspector dialog."""

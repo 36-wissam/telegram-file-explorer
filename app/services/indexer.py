@@ -1,5 +1,6 @@
 """Telegram media indexing engine with resumable SQLite storage."""
 
+import asyncio
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
@@ -202,6 +203,18 @@ class MediaIndexerService:
             )
             conn.commit()
 
+    def reset_indexing_state(self, chat_id: Optional[int] = None) -> None:
+        """Reset resumable indexing checkpoint for a single chat or all chats."""
+        with self._get_connection() as conn:
+            if chat_id is not None:
+                conn.execute(
+                    "UPDATE indexing_state SET last_indexed_message_id = 0, is_completed = 0 WHERE chat_id = ?;",
+                    (chat_id,),
+                )
+            else:
+                conn.execute("UPDATE indexing_state SET last_indexed_message_id = 0, is_completed = 0;")
+            conn.commit()
+
     async def index_chat(
         self,
         chat_id: int,
@@ -209,10 +222,12 @@ class MediaIndexerService:
         limit: int = 500,
         batch_size: int = 50,
         progress_callback: Optional[Callable[[int, int], None]] = None,
+        pause_event: Optional[asyncio.Event] = None,
+        cancel_check: Optional[Callable[[], bool]] = None,
     ) -> int:
         """Scan messages in a chat from the last checkpoint and index media metadata.
 
-        Supports safe resumption: picks up from last_indexed_message_id.
+        Supports safe resumption, pause/resume, and cooperative cancellation.
         Does NOT download files.
         """
         client = self.manager.client
@@ -234,6 +249,13 @@ class MediaIndexerService:
 
         # iter_messages with min_id=last_id and reverse=True indexes chronological forward from last checkpoint
         async for message in client.iter_messages(chat_id, min_id=last_id, limit=limit, reverse=True):
+            if cancel_check and cancel_check():
+                logger.info("Indexing cancelled by user for chat %s", chat_title)
+                break
+
+            if pause_event:
+                await pause_event.wait()
+
             messages_scanned += 1
             if message.id > latest_scanned_id:
                 latest_scanned_id = message.id
@@ -257,8 +279,9 @@ class MediaIndexerService:
             self.update_indexing_state(chat_id, chat_title, latest_scanned_id, len(current_batch), is_completed=False)
             current_batch.clear()
 
-        # Mark completed if scan covered limit or exhausted messages
-        is_done = messages_scanned < limit
+        # Mark completed if scan was not cancelled and covered limit or exhausted messages
+        was_cancelled = cancel_check() if cancel_check else False
+        is_done = (not was_cancelled) and (messages_scanned < limit)
         self.update_indexing_state(chat_id, chat_title, latest_scanned_id, 0, is_completed=is_done)
 
         logger.info(

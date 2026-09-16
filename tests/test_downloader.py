@@ -76,10 +76,11 @@ def test_download_manager_retry(tmp_path):
     )
     manager.tasks[task.task_id] = task
 
-    success = manager.retry_download(task.task_id)
-    assert success is True
-    assert task.status == DownloadStatus.QUEUED
-    assert task.error_message is None
+    with patch("app.services.downloader.async_runner.run_coroutine_async"):
+        success = manager.retry_download(task.task_id)
+        assert success is True
+        assert task.status == DownloadStatus.QUEUED
+        assert task.error_message is None
 
 
 def test_download_dialog_ui(qapp, tmp_path):
