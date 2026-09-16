@@ -80,28 +80,7 @@ telegram-file-explorer/
 └── README.md
 ```
 
----
-
-## Roadmap
-
-- [x] **Stage 1 — Project Foundation**: Project structure, configuration, logging, and basic PySide6 window.
-- [ ] **Stage 2 — Telegram API Configuration**: MTProto client setup and secure session storage.
-- [ ] **Stage 3 — Telegram Authentication**: Login UI, OTP verification, 2FA, session persistence.
-- [ ] **Stage 4 — Telegram Chat Discovery**: List dialogs, channels, groups, and navigation.
-- [ ] **Stage 5 — Media/File Indexing**: Message scanning and metadata extraction.
-- [ ] **Stage 6 — Database Layer**: SQLAlchemy models and resumable indexing state.
-- [ ] **Stage 7 — File Explorer UI**: Modern file manager interface with grid/list views.
-- [ ] **Stage 8 — Search Engine**: SQLite FTS5 full-text search with multi-faceted filtering.
-- [ ] **Stage 9 — File Preview**: Cached thumbnails, metadata previews, image inspection.
-- [ ] **Stage 10 — File Download Manager**: Asynchronous downloader with progress and speed tracking.
-- [ ] **Stage 11 — Advanced Filtering**: Size range, date range, type, extension filters.
-- [ ] **Stage 12 — Indexing Controls**: Pause, resume, re-index, per-chat indexing controls.
-- [ ] **Stage 13 — Performance & Reliability**: Query optimization, rate limit handling, connection recovery.
-- [ ] **Stage 14 — Security Review**: Credential hardening and privacy auditing.
-- [ ] **Stage 15 — Final Polish**: UI polish, shortcuts, icons, and final packaging.
-
----
-
 ## License
 
 MIT License.
+

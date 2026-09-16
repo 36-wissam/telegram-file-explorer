@@ -1,5 +1,4 @@
-"""Telegram client integration package."""
-
+from .auth import AuthError, AuthState, TelegramAuthService
 from .client import TelegramClientManager, validate_api_credentials
 from .exceptions import (
     ConfigurationError,
@@ -13,6 +12,9 @@ from .exceptions import (
 __all__ = [
     "TelegramClientManager",
     "validate_api_credentials",
+    "TelegramAuthService",
+    "AuthState",
+    "AuthError",
     "TelegramAppError",
     "ConfigurationError",
     "MissingCredentialsError",
@@ -20,3 +22,4 @@ __all__ = [
     "InvalidApiHashError",
     "TelegramClientError",
 ]
+
