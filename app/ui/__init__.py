@@ -5,6 +5,7 @@ from .login_dialog import LoginDialog
 from .chat_list import ChatListWidget, ChatListItemWidget
 from .chat_detail import ChatDetailWidget
 from .file_explorer import FileExplorerWidget
+from .preview_panel import PreviewPanel, PreviewDialog
 
 __all__ = [
     "MainWindow",
@@ -13,7 +14,10 @@ __all__ = [
     "ChatListItemWidget",
     "ChatDetailWidget",
     "FileExplorerWidget",
+    "PreviewPanel",
+    "PreviewDialog",
 ]
+
 
 
 

@@ -229,6 +229,15 @@ class FileExplorerWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
+        inner_splitter = QSplitter(Qt.Horizontal)
+        inner_splitter.setStyleSheet("QSplitter::handle { background-color: #2b2d31; width: 1px; }")
+
+        # Center Column: Table + Pagination Footer
+        table_container = QWidget()
+        tc_layout = QVBoxLayout(table_container)
+        tc_layout.setContentsMargins(0, 0, 0, 0)
+        tc_layout.setSpacing(0)
+
         # File List Table
         self.table = QTableWidget()
         self.table.setColumnCount(5)
@@ -269,7 +278,7 @@ class FileExplorerWidget(QWidget):
         )
         self.table.itemSelectionChanged.connect(self._on_table_selection_changed)
         self.table.itemDoubleClicked.connect(self._on_table_double_clicked)
-        layout.addWidget(self.table)
+        tc_layout.addWidget(self.table)
 
         # Pagination & Summary Footer
         footer = QFrame()
@@ -304,8 +313,20 @@ class FileExplorerWidget(QWidget):
         self.btn_next_page.clicked.connect(self._next_page)
         f_layout.addWidget(self.btn_next_page)
 
-        layout.addWidget(footer)
+        tc_layout.addWidget(footer)
+        inner_splitter.addWidget(table_container)
+
+        # Right Inspector: Preview Panel
+        from .preview_panel import PreviewPanel
+        self.preview_panel = PreviewPanel()
+        inner_splitter.addWidget(self.preview_panel)
+
+        inner_splitter.setStretchFactor(0, 1)
+        inner_splitter.setStretchFactor(1, 0)
+
+        layout.addWidget(inner_splitter)
         return pane
+
 
     def set_chat_filter(self, chat_id: Optional[int]):
         """Filter files for a specific chat."""
@@ -419,8 +440,16 @@ class FileExplorerWidget(QWidget):
             first_item = self.table.item(selected_rows[0].row(), 0)
             file_item = first_item.data(Qt.UserRole)
             self.file_selected.emit(file_item)
+            self.preview_panel.set_file(file_item)
+        else:
+            self.preview_panel.set_file(None)
 
     def _on_table_double_clicked(self, item: QTableWidgetItem):
         first_item = self.table.item(item.row(), 0)
         file_item = first_item.data(Qt.UserRole)
         self.file_double_clicked.emit(file_item)
+        if file_item:
+            from .preview_panel import PreviewDialog
+            dialog = PreviewDialog(file_item, parent=self)
+            dialog.exec()
+
