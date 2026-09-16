@@ -1,4 +1,5 @@
 from .auth import AuthError, AuthState, TelegramAuthService
+from .chats import ChatType, TelegramChat, TelegramChatService
 from .client import TelegramClientManager, validate_api_credentials
 from .exceptions import (
     ConfigurationError,
@@ -15,6 +16,9 @@ __all__ = [
     "TelegramAuthService",
     "AuthState",
     "AuthError",
+    "TelegramChatService",
+    "TelegramChat",
+    "ChatType",
     "TelegramAppError",
     "ConfigurationError",
     "MissingCredentialsError",
@@ -22,4 +26,5 @@ __all__ = [
     "InvalidApiHashError",
     "TelegramClientError",
 ]
+
 

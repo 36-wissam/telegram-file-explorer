@@ -10,6 +10,8 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPushButton,
+    QSplitter,
+    QStackedWidget,
     QStatusBar,
     QVBoxLayout,
     QWidget,
@@ -19,7 +21,10 @@ from ..core.async_runner import async_runner
 from ..core.config import settings
 from ..core.logger import get_logger
 from ..telegram.auth import AuthState, TelegramAuthService
+from ..telegram.chats import TelegramChat, TelegramChatService
 from ..telegram.client import TelegramClientManager
+from .chat_detail import ChatDetailWidget
+from .chat_list import ChatListWidget
 from .login_dialog import LoginDialog
 
 logger = get_logger("ui.main_window")
@@ -28,21 +33,27 @@ logger = get_logger("ui.main_window")
 class MainWindow(QMainWindow):
     """Main desktop application window."""
 
-    def __init__(self, client_manager: TelegramClientManager = None, auth_service: TelegramAuthService = None):
+    def __init__(
+        self,
+        client_manager: TelegramClientManager = None,
+        auth_service: TelegramAuthService = None,
+        chat_service: TelegramChatService = None,
+    ):
         super().__init__()
         self.setWindowTitle(f"{settings.app_name} v{settings.app_version}")
-        self.setMinimumSize(850, 580)
-        self.resize(1080, 720)
+        self.setMinimumSize(960, 640)
+        self.resize(1140, 760)
 
         # Initialize core services
         self.client_manager = client_manager or TelegramClientManager(settings)
         self.auth_service = auth_service or TelegramAuthService(self.client_manager)
+        self.chat_service = chat_service or TelegramChatService(self.client_manager)
 
         self._init_menu_bar()
         self._init_ui()
         self._init_status_bar()
 
-        # Trigger auto-reconnect / auth check after Qt event loop starts
+        # Check session state on start
         QTimer.singleShot(100, self._check_initial_auth_state)
 
         logger.info("MainWindow initialized successfully.")
@@ -64,6 +75,12 @@ class MainWindow(QMainWindow):
         self.action_login.triggered.connect(self.open_login_dialog)
         self.account_menu.addAction(self.action_login)
 
+        self.action_refresh_chats = QAction("&Refresh Chats", self)
+        self.action_refresh_chats.setShortcut("F5")
+        self.action_refresh_chats.triggered.connect(self.refresh_chats)
+        self.action_refresh_chats.setEnabled(False)
+        self.account_menu.addAction(self.action_refresh_chats)
+
         self.action_logout = QAction("Sign &Out", self)
         self.action_logout.triggered.connect(self._on_logout)
         self.action_logout.setEnabled(False)
@@ -76,16 +93,26 @@ class MainWindow(QMainWindow):
         help_menu.addAction(about_action)
 
     def _init_ui(self):
-        """Construct central widget layout."""
-        central_widget = QWidget(self)
-        self.setCentralWidget(central_widget)
+        """Construct central stacked widget layout."""
+        self.central_stack = QStackedWidget(self)
+        self.setCentralWidget(self.central_stack)
 
-        main_layout = QVBoxLayout(central_widget)
-        main_layout.setContentsMargins(32, 32, 32, 32)
-        main_layout.setSpacing(20)
+        # Page 0: Welcome / Authentication Card View
+        self.welcome_page = self._create_welcome_page()
+        self.central_stack.addWidget(self.welcome_page)
 
-        # Welcome Card Container
-        self.card = QFrame(self)
+        # Page 1: Chat Explorer Split View (Discovery sidebar + detail view)
+        self.explorer_page = self._create_explorer_page()
+        self.central_stack.addWidget(self.explorer_page)
+
+    def _create_welcome_page(self) -> QWidget:
+        """Create landing / authentication page."""
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(32, 32, 32, 32)
+        layout.setSpacing(20)
+
+        self.card = QFrame(page)
         self.card.setStyleSheet(
             """
             QFrame {
@@ -100,7 +127,6 @@ class MainWindow(QMainWindow):
         card_layout.setSpacing(14)
         card_layout.setAlignment(Qt.AlignCenter)
 
-        # App Icon / Title
         title_label = QLabel(f"📂 {settings.app_name}")
         title_font = QFont()
         title_font.setPointSize(22)
@@ -110,7 +136,6 @@ class MainWindow(QMainWindow):
         title_label.setStyleSheet("color: #ffffff;")
         card_layout.addWidget(title_label)
 
-        # Subtitle / Tagline
         subtitle_label = QLabel(
             "Browse, index, search, preview, and download files from your Telegram account."
         )
@@ -118,8 +143,7 @@ class MainWindow(QMainWindow):
         subtitle_label.setStyleSheet("color: #949ba4; font-size: 14px;")
         card_layout.addWidget(subtitle_label)
 
-        # Status badge container
-        self.status_box = QFrame(self)
+        self.status_box = QFrame(page)
         self.status_box.setStyleSheet(
             """
             QFrame {
@@ -145,26 +169,50 @@ class MainWindow(QMainWindow):
 
         card_layout.addWidget(self.status_box, alignment=Qt.AlignCenter)
 
-        # Action Buttons Container
-        self.btn_layout = QHBoxLayout()
-        self.btn_layout.setSpacing(12)
-        self.btn_layout.setAlignment(Qt.AlignCenter)
-
         self.btn_auth_action = QPushButton("Sign in to Telegram")
         self.btn_auth_action.setObjectName("primaryButton")
         self.btn_auth_action.clicked.connect(self.open_login_dialog)
-        self.btn_layout.addWidget(self.btn_auth_action)
+        card_layout.addWidget(self.btn_auth_action, alignment=Qt.AlignCenter)
 
-        self.btn_logout = QPushButton("Sign Out")
-        self.btn_logout.clicked.connect(self._on_logout)
-        self.btn_logout.setVisible(False)
-        self.btn_layout.addWidget(self.btn_logout)
+        layout.addStretch()
+        layout.addWidget(self.card)
+        layout.addStretch()
+        return page
 
-        card_layout.addLayout(self.btn_layout)
+    def _create_explorer_page(self) -> QWidget:
+        """Create split-pane chat discovery and details page."""
+        page = QWidget()
+        page_layout = QVBoxLayout(page)
+        page_layout.setContentsMargins(0, 0, 0, 0)
+        page_layout.setSpacing(0)
 
-        main_layout.addStretch()
-        main_layout.addWidget(self.card)
-        main_layout.addStretch()
+        splitter = QSplitter(Qt.Horizontal)
+        splitter.setStyleSheet(
+            """
+            QSplitter::handle {
+                background-color: #2b2d31;
+                width: 2px;
+            }
+            """
+        )
+
+        # Left Sidebar: Chat List
+        self.chat_list_widget = ChatListWidget()
+        self.chat_list_widget.setMinimumWidth(320)
+        self.chat_list_widget.setMaximumWidth(450)
+        self.chat_list_widget.chat_selected.connect(self._on_chat_selected)
+        self.chat_list_widget.refresh_requested.connect(self.refresh_chats)
+        splitter.addWidget(self.chat_list_widget)
+
+        # Right Area: Chat Details
+        self.chat_detail_widget = ChatDetailWidget()
+        splitter.addWidget(self.chat_detail_widget)
+
+        splitter.setStretchFactor(0, 0)
+        splitter.setStretchFactor(1, 1)
+
+        page_layout.addWidget(splitter)
+        return page
 
     def _init_status_bar(self):
         """Set up bottom status bar."""
@@ -174,13 +222,15 @@ class MainWindow(QMainWindow):
 
     def _check_initial_auth_state(self):
         """Check if local session is already authenticated (session persistence)."""
-        self.status_bar.showMessage("Connecting to Telegram MTProto...")
+        self.status_bar.showMessage("Checking session...")
 
         def on_success(state: AuthState):
             self.update_auth_ui()
+            if state == AuthState.AUTHORIZED:
+                self.refresh_chats()
 
         def on_error(exc):
-            logger.error("Error during initial auth check: %s", exc)
+            logger.error("Error checking auth state: %s", exc)
             self.update_auth_ui()
 
         async_runner.run_coroutine_async(
@@ -190,51 +240,69 @@ class MainWindow(QMainWindow):
         )
 
     def update_auth_ui(self):
-        """Refresh UI based on current authentication state."""
+        """Refresh UI state based on authentication."""
         state = self.auth_service.state
         if state == AuthState.AUTHORIZED and self.auth_service.current_user:
             user = self.auth_service.current_user
             name = f"{user['first_name']} {user['last_name']}".strip()
             username = f"@{user['username']}" if user['username'] else "No username"
 
-            self.account_status_label.setText(
-                "<b>Account Status:</b> <span style='color: #57f287;'>● Logged In</span>"
-            )
-            self.details_label.setText(
-                f"<b>Name:</b> {name}<br>"
-                f"<b>Username:</b> {username}<br>"
-                f"<b>Phone:</b> {user['phone']}<br>"
-                f"<b>Telegram ID:</b> {user['id']}"
-            )
-            self.btn_auth_action.setVisible(False)
-            self.btn_logout.setVisible(True)
             self.action_login.setEnabled(False)
             self.action_logout.setEnabled(True)
+            self.action_refresh_chats.setEnabled(True)
+
+            self.central_stack.setCurrentIndex(1)
             self.status_bar.showMessage(f"Connected to Telegram as {name} ({username})")
 
-        elif state == AuthState.NOT_CONFIGURED:
-            self.account_status_label.setText(
-                "<b>Account Status:</b> <span style='color: #fee75c;'>API Not Configured</span>"
-            )
-            self.details_label.setText("Configure your Telegram API ID & Hash to sign in.")
-            self.btn_auth_action.setText("Configure & Sign In")
-            self.btn_auth_action.setVisible(True)
-            self.btn_logout.setVisible(False)
-            self.action_login.setEnabled(True)
-            self.action_logout.setEnabled(False)
-            self.status_bar.showMessage("Telegram API credentials required.")
-
         else:
-            self.account_status_label.setText(
-                "<b>Account Status:</b> <span style='color: #ed4245;'>Not Signed In</span>"
-            )
-            self.details_label.setText("Sign in with your Telegram account to explore chats and files.")
-            self.btn_auth_action.setText("Sign in to Telegram")
-            self.btn_auth_action.setVisible(True)
-            self.btn_logout.setVisible(False)
+            self.central_stack.setCurrentIndex(0)
             self.action_login.setEnabled(True)
             self.action_logout.setEnabled(False)
-            self.status_bar.showMessage("Ready to sign in.")
+            self.action_refresh_chats.setEnabled(False)
+
+            if state == AuthState.NOT_CONFIGURED:
+                self.account_status_label.setText(
+                    "<b>Account Status:</b> <span style='color: #fee75c;'>API Not Configured</span>"
+                )
+                self.details_label.setText("Configure your Telegram API ID & Hash to sign in.")
+                self.btn_auth_action.setText("Configure & Sign In")
+                self.status_bar.showMessage("Telegram API credentials required.")
+            else:
+                self.account_status_label.setText(
+                    "<b>Account Status:</b> <span style='color: #ed4245;'>Not Signed In</span>"
+                )
+                self.details_label.setText("Sign in with your Telegram account to explore chats and files.")
+                self.btn_auth_action.setText("Sign in to Telegram")
+                self.status_bar.showMessage("Ready to sign in.")
+
+    def refresh_chats(self):
+        """Retrieve accessible chats from Telegram MTProto in background."""
+        if self.auth_service.state != AuthState.AUTHORIZED:
+            return
+
+        self.status_bar.showMessage("Discovering accessible chats & channels...")
+        self.chat_list_widget.btn_refresh.setEnabled(False)
+
+        def on_success(chats):
+            self.chat_list_widget.btn_refresh.setEnabled(True)
+            self.chat_list_widget.set_chats(chats)
+            self.status_bar.showMessage(f"Discovered {len(chats)} chats from your account.")
+
+        def on_error(exc):
+            self.chat_list_widget.btn_refresh.setEnabled(True)
+            logger.error("Failed to discover chats: %s", exc)
+            self.status_bar.showMessage(f"Error loading chats: {exc}")
+
+        async_runner.run_coroutine_async(
+            self.chat_service.get_dialogs(limit=150),
+            callback=on_success,
+            error_callback=on_error,
+        )
+
+    def _on_chat_selected(self, chat: TelegramChat):
+        """Handle chat navigation."""
+        self.chat_detail_widget.set_chat(chat)
+        self.status_bar.showMessage(f"Viewing chat: {chat.display_name} (ID: {chat.id})")
 
     def open_login_dialog(self):
         """Open the stepped MTProto login dialog."""
@@ -244,11 +312,11 @@ class MainWindow(QMainWindow):
 
     def _on_login_success(self, user_dict):
         """Callback when user completes login in dialog."""
-        logger.info("LoginDialog returned authenticated user: %s", user_dict.get("username"))
         self.update_auth_ui()
+        self.refresh_chats()
 
     def _on_logout(self):
-        """Log out the current Telegram account and clear local session."""
+        """Log out and reset application state."""
         confirm = QMessageBox.question(
             self,
             "Sign Out",
@@ -262,6 +330,8 @@ class MainWindow(QMainWindow):
         self.status_bar.showMessage("Logging out...")
 
         def on_success(_):
+            self.chat_list_widget.set_chats([])
+            self.chat_detail_widget.set_chat(None)
             self.update_auth_ui()
             self.status_bar.showMessage("Signed out successfully.")
 
@@ -285,8 +355,3 @@ class MainWindow(QMainWindow):
             "<p>A local-first desktop application to explore, search, and download your Telegram files.</p>"
             "<p>Built with Python, Telethon, PySide6, and SQLite.</p>",
         )
-
-    def closeEvent(self, event):
-        """Handle window close event and clean up resources."""
-        logger.info("Closing application window...")
-        super().closeEvent(event)
