@@ -22,9 +22,11 @@ from ..core.config import settings
 from ..core.logger import get_logger
 from ..telegram.auth import AuthState, TelegramAuthService
 from ..telegram.chats import TelegramChat, TelegramChatService
+from ..database.repository import DatabaseRepository
 from ..telegram.client import TelegramClientManager
 from .chat_detail import ChatDetailWidget
 from .chat_list import ChatListWidget
+from .file_explorer import FileExplorerWidget
 from .login_dialog import LoginDialog
 
 logger = get_logger("ui.main_window")
@@ -38,6 +40,7 @@ class MainWindow(QMainWindow):
         client_manager: TelegramClientManager = None,
         auth_service: TelegramAuthService = None,
         chat_service: TelegramChatService = None,
+        repo: DatabaseRepository = None,
     ):
         super().__init__()
         self.setWindowTitle(f"{settings.app_name} v{settings.app_version}")
@@ -48,6 +51,8 @@ class MainWindow(QMainWindow):
         self.client_manager = client_manager or TelegramClientManager(settings)
         self.auth_service = auth_service or TelegramAuthService(self.client_manager)
         self.chat_service = chat_service or TelegramChatService(self.client_manager)
+        self.repo = repo or DatabaseRepository()
+
 
         self._init_menu_bar()
         self._init_ui()
@@ -180,39 +185,81 @@ class MainWindow(QMainWindow):
         return page
 
     def _create_explorer_page(self) -> QWidget:
-        """Create split-pane chat discovery and details page."""
+        """Create split-pane chat discovery and file explorer page."""
         page = QWidget()
         page_layout = QVBoxLayout(page)
         page_layout.setContentsMargins(0, 0, 0, 0)
         page_layout.setSpacing(0)
 
-        splitter = QSplitter(Qt.Horizontal)
-        splitter.setStyleSheet(
+        # Top Mode Switcher Bar
+        mode_bar = QFrame()
+        mode_bar.setStyleSheet(
             """
-            QSplitter::handle {
-                background-color: #2b2d31;
-                width: 2px;
+            QFrame {
+                background-color: #18191c;
+                border-bottom: 1px solid #2b2d31;
+                padding: 4px 12px;
             }
             """
         )
+        mb_layout = QHBoxLayout(mode_bar)
+        mb_layout.setContentsMargins(12, 4, 12, 4)
+        mb_layout.setSpacing(8)
 
-        # Left Sidebar: Chat List
+        self.btn_nav_chats = QPushButton("💬 Chats Discovery")
+        self.btn_nav_chats.setObjectName("primaryButton")
+        self.btn_nav_chats.clicked.connect(lambda: self._switch_main_view(0))
+        mb_layout.addWidget(self.btn_nav_chats)
+
+        self.btn_nav_files = QPushButton("📂 File Explorer")
+        self.btn_nav_files.clicked.connect(lambda: self._switch_main_view(1))
+        mb_layout.addWidget(self.btn_nav_files)
+
+        mb_layout.addStretch()
+        page_layout.addWidget(mode_bar)
+
+        # View Stack
+        self.view_stack = QStackedWidget()
+
+        # View 0: Chats & Chat Detail Splitter
+        chat_splitter = QSplitter(Qt.Horizontal)
+        chat_splitter.setStyleSheet("QSplitter::handle { background-color: #2b2d31; width: 1px; }")
+
         self.chat_list_widget = ChatListWidget()
         self.chat_list_widget.setMinimumWidth(320)
-        self.chat_list_widget.setMaximumWidth(450)
+        self.chat_list_widget.setMaximumWidth(420)
         self.chat_list_widget.chat_selected.connect(self._on_chat_selected)
         self.chat_list_widget.refresh_requested.connect(self.refresh_chats)
-        splitter.addWidget(self.chat_list_widget)
+        chat_splitter.addWidget(self.chat_list_widget)
 
-        # Right Area: Chat Details
         self.chat_detail_widget = ChatDetailWidget()
-        splitter.addWidget(self.chat_detail_widget)
+        chat_splitter.addWidget(self.chat_detail_widget)
+        chat_splitter.setStretchFactor(0, 0)
+        chat_splitter.setStretchFactor(1, 1)
+        self.view_stack.addWidget(chat_splitter)
 
-        splitter.setStretchFactor(0, 0)
-        splitter.setStretchFactor(1, 1)
+        # View 1: Main File Explorer
+        self.file_explorer_widget = FileExplorerWidget(self.repo)
+        self.view_stack.addWidget(self.file_explorer_widget)
 
-        page_layout.addWidget(splitter)
+        page_layout.addWidget(self.view_stack)
         return page
+
+    def _switch_main_view(self, index: int):
+        """Switch between Chats Discovery (0) and File Explorer (1)."""
+        self.view_stack.setCurrentIndex(index)
+        if index == 0:
+            self.btn_nav_chats.setObjectName("primaryButton")
+            self.btn_nav_files.setObjectName("")
+        else:
+            self.btn_nav_chats.setObjectName("")
+            self.btn_nav_files.setObjectName("primaryButton")
+            self.file_explorer_widget.reload_files()
+        self.btn_nav_chats.style().unpolish(self.btn_nav_chats)
+        self.btn_nav_chats.style().polish(self.btn_nav_chats)
+        self.btn_nav_files.style().unpolish(self.btn_nav_files)
+        self.btn_nav_files.style().polish(self.btn_nav_files)
+
 
     def _init_status_bar(self):
         """Set up bottom status bar."""
