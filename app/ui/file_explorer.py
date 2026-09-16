@@ -59,6 +59,8 @@ class FileExplorerWidget(QWidget):
     def __init__(self, repo: DatabaseRepository, parent=None):
         super().__init__(parent)
         self.repo = repo
+        from ..services.search import SearchEngineService
+        self.search_service = SearchEngineService(self.repo)
         self._current_category: Optional[str] = None
         self._current_chat_id: Optional[int] = None
         self._search_query: str = ""
@@ -71,6 +73,7 @@ class FileExplorerWidget(QWidget):
 
         self._init_ui()
         self.reload_files()
+
 
     def _init_ui(self):
         layout = QVBoxLayout(self)
@@ -311,28 +314,23 @@ class FileExplorerWidget(QWidget):
         self.reload_files()
 
     def reload_files(self):
-        """Fetch files from repository with active filters and render table."""
+        """Fetch files using FTS5 search service with active filters and render table."""
         category = self._current_category if self._current_category != "ALL" else None
-
-        self._total_files = self.repo.get_files_count(
-            chat_id=self._current_chat_id,
-            media_type=category,
-            search_query=self._search_query or None,
-        )
-
         offset = self._page * self._page_size
-        self._cached_files = self.repo.get_files(
+
+        self._cached_files, self._total_files = self.search_service.search_files(
+            query_text=self._search_query,
             chat_id=self._current_chat_id,
             media_type=category,
-            search_query=self._search_query or None,
-            limit=self._page_size,
-            offset=offset,
             sort_by=self._sort_by,
             sort_desc=self._sort_desc,
+            limit=self._page_size,
+            offset=offset,
         )
 
         self._render_table()
         self._update_pagination()
+
 
     def _render_table(self):
         """Populate table with fetched files."""
