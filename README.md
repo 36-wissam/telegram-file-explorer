@@ -80,6 +80,20 @@ telegram-file-explorer/
 └── README.md
 ```
 
+---
+
+## Security & Local Data Privacy
+
+The application is engineered with a strict **Local-First, Zero-Cloud** security architecture:
+
+1. **Strict Local Isolation**: All API credentials (`API_ID`, `API_HASH`), phone numbers, MTProto `.session` binary files, and SQLite databases remain 100% on the user's personal machine in the gitignored `data/` directory. No telemetry, analytics, or external cloud servers are ever used.
+2. **Ephemeral In-Memory 2FA Handling**: Cloud passwords used during Two-Factor Authentication (2FA) SRP challenge are processed transiently in volatile RAM and immediately discarded. Passwords are never stored on disk, in SQLite, or in logs.
+3. **Log Sanitization & Masking**: The custom `SensitiveDataFormatter` automatically redacts phone numbers, 32-character hexadecimal API hashes, and credential keywords in all console streams and rotating log files.
+4. **File Permission Hardening**: Local credential stores and Telethon session files are protected with restricted read/write permissions (`0o600`).
+5. **Complete Data Eradication**: Full session logout and data wipe utilities enable immediate eradication of all local session tokens, SQLite databases, and cached media.
+
+---
+
 ## License
 
 MIT License.

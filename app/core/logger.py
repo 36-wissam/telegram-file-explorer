@@ -1,6 +1,7 @@
 """Logging configuration system for Telegram File Explorer."""
 
 import logging
+import re
 import sys
 from pathlib import Path
 from logging.handlers import RotatingFileHandler
@@ -9,6 +10,21 @@ from typing import Optional
 from .config import settings
 
 _LOGGERS = {}
+
+PHONE_REGEX = re.compile(r"\b(\+?[0-9]{1,3})[0-9]{4,8}([0-9]{2,4})\b")
+HASH_REGEX = re.compile(r"\b([a-f0-9]{4})[a-f0-9]{24}([a-f0-9]{4})\b", re.IGNORECASE)
+SECRET_KEYWORDS = re.compile(r"(password|api_hash|phone_code_hash|token|code)=([^\s,;]+)", re.IGNORECASE)
+
+
+class SensitiveDataFormatter(logging.Formatter):
+    """Custom log formatter redacting credentials, phone numbers, and secrets."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        original = super().format(record)
+        redacted = SECRET_KEYWORDS.sub(r"\1=[REDACTED]", original)
+        redacted = HASH_REGEX.sub(r"\1************************\2", redacted)
+        redacted = PHONE_REGEX.sub(r"\1****\2", redacted)
+        return redacted
 
 
 def setup_logging(level: Optional[str] = None) -> logging.Logger:
@@ -23,7 +39,7 @@ def setup_logging(level: Optional[str] = None) -> logging.Logger:
     if root_logger.handlers:
         return root_logger
 
-    log_format = logging.Formatter(
+    log_format = SensitiveDataFormatter(
         fmt="%(asctime)s [%(levelname)s] [%(name)s]: %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )

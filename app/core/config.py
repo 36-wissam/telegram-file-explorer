@@ -120,6 +120,7 @@ class Settings:
         try:
             with open(self.local_config_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2)
+            harden_file_permissions(self.local_config_path)
             return True
         except Exception:
             return False
@@ -133,6 +134,32 @@ class Settings:
                 self.local_config_path.unlink()
             except Exception:
                 pass
+
+    def wipe_local_credentials_and_sessions(self) -> dict:
+        """Securely wipe all local session files, credentials, and databases."""
+        deleted = {"config": False, "sessions": 0, "databases": 0}
+        self.clear_local_credentials()
+        deleted["config"] = True
+
+        # Wipe session files
+        if self.sessions_dir.exists():
+            for f in self.sessions_dir.glob(f"{self.session_name}*"):
+                try:
+                    f.unlink()
+                    deleted["sessions"] += 1
+                except Exception:
+                    pass
+
+        # Wipe database files
+        if self.data_dir.exists():
+            for f in self.data_dir.glob("*.db*"):
+                try:
+                    f.unlink()
+                    deleted["databases"] += 1
+                except Exception:
+                    pass
+
+        return deleted
 
     @property
     def is_telegram_configured(self) -> bool:
@@ -148,6 +175,17 @@ class Settings:
     def database_path(self) -> Path:
         """Path to primary SQLite database file."""
         return self.data_dir / "explorer.db"
+
+
+def harden_file_permissions(path: Path) -> None:
+    """Ensure sensitive local secrets or session files have restricted read/write permissions."""
+    if not path.exists():
+        return
+    try:
+        if os.name != "nt":
+            os.chmod(path, 0o600)
+    except Exception:
+        pass
 
 
 # Singleton instance
