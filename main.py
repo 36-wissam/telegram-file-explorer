@@ -1,5 +1,6 @@
 """Application entry point for Telegram File Explorer."""
 
+import argparse
 import sys
 from PySide6.QtWidgets import QApplication
 
@@ -9,10 +10,34 @@ from app.ui.main_window import MainWindow
 from app.ui.styles import DARK_THEME
 
 
+def parse_args(args=None):
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(
+        prog="telegram-file-explorer",
+        description=f"{settings.app_name} - Desktop Telegram MTProto File Manager & Explorer",
+    )
+    parser.add_argument(
+        "-v",
+        "--version",
+        action="version",
+        version=f"{settings.app_name} v{settings.app_version}",
+        help="Show application version and exit.",
+    )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Enable debug-level logging verbosity.",
+    )
+    return parser.parse_args(args)
+
+
 def main():
     """Main execution function."""
+    args = parse_args()
+
     # Initialize logging system
-    logger = setup_logging()
+    log_level = "DEBUG" if args.debug else None
+    logger = setup_logging(level=log_level)
     logger.info("==========================================")
     logger.info("Starting %s v%s", settings.app_name, settings.app_version)
     logger.info("Base directory: %s", settings.base_dir)
@@ -42,3 +67,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

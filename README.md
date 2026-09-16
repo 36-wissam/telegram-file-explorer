@@ -60,6 +60,27 @@ A modern desktop application built with **Python**, **Telethon**, and **PySide6*
    python main.py
    ```
 
+   **CLI Options**:
+   ```bash
+   python main.py --help       # Display help and options
+   python main.py --version    # Display version
+   python main.py --debug      # Launch with verbose debug logging
+   ```
+
+---
+
+## Keyboard Shortcuts
+
+| Shortcut | Description |
+| :--- | :--- |
+| <kbd>Ctrl</kbd> + <kbd>F</kbd> | Jump to File Explorer search input |
+| <kbd>Ctrl</kbd> + <kbd>L</kbd> | Open Telegram Sign In dialog |
+| <kbd>Ctrl</kbd> + <kbd>I</kbd> | Open Indexing Manager dialog |
+| <kbd>Ctrl</kbd> + <kbd>J</kbd> | Open Download Manager dialog |
+| <kbd>F5</kbd> | Refresh chats and file index |
+| <kbd>Ctrl</kbd> + <kbd>Q</kbd> | Exit application |
+| <kbd>F1</kbd> | View About & System Engine dialog |
+
 ---
 
 ## Project Structure

@@ -76,22 +76,39 @@ class MainWindow(QMainWindow):
         file_menu = menu_bar.addMenu("&File")
         exit_action = QAction("&Exit", self)
         exit_action.setShortcut("Ctrl+Q")
+        exit_action.setStatusTip("Exit the application")
         exit_action.triggered.connect(self.close)
         file_menu.addAction(exit_action)
+
+        # Edit Menu
+        edit_menu = menu_bar.addMenu("&Edit")
+        self.action_find_files = QAction("&Find Files...", self)
+        self.action_find_files.setShortcut("Ctrl+F")
+        self.action_find_files.setStatusTip("Search and filter indexed Telegram files")
+        self.action_find_files.triggered.connect(self._on_find_files)
+        edit_menu.addAction(self.action_find_files)
+
+        self.action_refresh_all = QAction("&Refresh All", self)
+        self.action_refresh_all.setShortcut("F5")
+        self.action_refresh_all.setStatusTip("Refresh chats and indexed files")
+        self.action_refresh_all.triggered.connect(self._on_refresh_all)
+        edit_menu.addAction(self.action_refresh_all)
 
         # Account Menu
         self.account_menu = menu_bar.addMenu("&Account")
         self.action_login = QAction("Sign &In...", self)
+        self.action_login.setShortcut("Ctrl+L")
+        self.action_login.setStatusTip("Sign in with your Telegram account")
         self.action_login.triggered.connect(self.open_login_dialog)
         self.account_menu.addAction(self.action_login)
 
         self.action_refresh_chats = QAction("&Refresh Chats", self)
-        self.action_refresh_chats.setShortcut("F5")
         self.action_refresh_chats.triggered.connect(self.refresh_chats)
         self.action_refresh_chats.setEnabled(False)
         self.account_menu.addAction(self.action_refresh_chats)
 
         self.action_logout = QAction("Sign &Out", self)
+        self.action_logout.setStatusTip("Sign out and clear local session")
         self.action_logout.triggered.connect(self._on_logout)
         self.action_logout.setEnabled(False)
         self.account_menu.addAction(self.action_logout)
@@ -100,6 +117,7 @@ class MainWindow(QMainWindow):
         downloads_menu = menu_bar.addMenu("&Downloads")
         self.action_view_downloads = QAction("View &Downloads...", self)
         self.action_view_downloads.setShortcut("Ctrl+J")
+        self.action_view_downloads.setStatusTip("View active and completed downloads")
         self.action_view_downloads.triggered.connect(self.open_download_manager)
         downloads_menu.addAction(self.action_view_downloads)
 
@@ -107,12 +125,15 @@ class MainWindow(QMainWindow):
         tools_menu = menu_bar.addMenu("&Tools")
         self.action_index_manager = QAction("⚡ &Indexing Manager...", self)
         self.action_index_manager.setShortcut("Ctrl+I")
+        self.action_index_manager.setStatusTip("Scan and index Telegram files in background")
         self.action_index_manager.triggered.connect(lambda: self.open_indexing_manager())
         tools_menu.addAction(self.action_index_manager)
 
         # Help Menu
         help_menu = menu_bar.addMenu("&Help")
-        about_action = QAction("&About", self)
+        about_action = QAction("&About Telegram File Explorer", self)
+        about_action.setShortcut("F1")
+        about_action.setStatusTip("View application version and system information")
         about_action.triggered.connect(self._show_about)
         help_menu.addAction(about_action)
 
@@ -301,6 +322,7 @@ class MainWindow(QMainWindow):
         if hasattr(self, "file_explorer_widget"):
             self.file_explorer_widget.refresh_chats_filter()
             self.file_explorer_widget.reload_files()
+        self._update_status_files_indicator()
         status_txt = (
             f"Indexing finished: {total_files} files indexed."
             if not is_cancelled
@@ -357,10 +379,32 @@ class MainWindow(QMainWindow):
 
 
     def _init_status_bar(self):
-        """Set up bottom status bar."""
+        """Set up bottom status bar with permanent status indicators."""
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
+
+        self.status_files_indicator = QLabel("📁 0 files")
+        self.status_files_indicator.setStyleSheet(
+            "color: #949ba4; font-size: 11px; padding: 0 10px; font-weight: 500;"
+        )
+        self.status_bar.addPermanentWidget(self.status_files_indicator)
+
+        self.status_auth_indicator = QLabel("🔴 Not Signed In")
+        self.status_auth_indicator.setStyleSheet(
+            "color: #ed4245; font-size: 11px; padding: 0 10px; font-weight: 500;"
+        )
+        self.status_bar.addPermanentWidget(self.status_auth_indicator)
+
         self.status_bar.showMessage("Ready.")
+        self._update_status_files_indicator()
+
+    def _update_status_files_indicator(self):
+        """Update the permanent status bar file count indicator."""
+        try:
+            count = self.repo.get_files_count()
+            self.status_files_indicator.setText(f"📁 {count:,} files")
+        except Exception as e:
+            logger.debug("Could not update status files count: %s", e)
 
     def _check_initial_auth_state(self):
         """Check if local session is already authenticated (session persistence)."""
@@ -393,6 +437,11 @@ class MainWindow(QMainWindow):
             self.action_logout.setEnabled(True)
             self.action_refresh_chats.setEnabled(True)
 
+            self.status_auth_indicator.setText(f"🟢 {name}")
+            self.status_auth_indicator.setStyleSheet(
+                "color: #57f287; font-size: 11px; padding: 0 10px; font-weight: bold;"
+            )
+
             self.central_stack.setCurrentIndex(1)
             self.status_bar.showMessage(f"Connected to Telegram as {name} ({username})")
 
@@ -408,6 +457,10 @@ class MainWindow(QMainWindow):
                 )
                 self.details_label.setText("Configure your Telegram API ID & Hash to sign in.")
                 self.btn_auth_action.setText("Configure & Sign In")
+                self.status_auth_indicator.setText("🟡 API Not Configured")
+                self.status_auth_indicator.setStyleSheet(
+                    "color: #fee75c; font-size: 11px; padding: 0 10px; font-weight: bold;"
+                )
                 self.status_bar.showMessage("Telegram API credentials required.")
             else:
                 self.account_status_label.setText(
@@ -415,7 +468,13 @@ class MainWindow(QMainWindow):
                 )
                 self.details_label.setText("Sign in with your Telegram account to explore chats and files.")
                 self.btn_auth_action.setText("Sign in to Telegram")
+                self.status_auth_indicator.setText("🔴 Not Signed In")
+                self.status_auth_indicator.setStyleSheet(
+                    "color: #ed4245; font-size: 11px; padding: 0 10px; font-weight: bold;"
+                )
                 self.status_bar.showMessage("Ready to sign in.")
+
+        self._update_status_files_indicator()
 
     def refresh_chats(self):
         """Retrieve accessible chats from Telegram MTProto in background."""
@@ -488,12 +547,58 @@ class MainWindow(QMainWindow):
             error_callback=on_error,
         )
 
+    def _on_find_files(self):
+        """Switch to file explorer view and focus the search box."""
+        if self.central_stack.currentIndex() == 1:
+            self._switch_main_view(1)
+            self.file_explorer_widget.focus_search()
+        else:
+            self.status_bar.showMessage("Sign in to search and explore files.", 3000)
+
+    def _on_refresh_all(self):
+        """Refresh chats, indexed files, and status indicators."""
+        if self.auth_service.state == AuthState.AUTHORIZED:
+            self.refresh_chats()
+        if hasattr(self, "file_explorer_widget"):
+            self.file_explorer_widget.refresh_chats_filter()
+            self.file_explorer_widget.reload_files()
+        self._update_status_files_indicator()
+        self.status_bar.showMessage("Refreshed chats and file index.", 3000)
+
     def _show_about(self):
-        """Show about message."""
+        """Show enriched About dialog with versions and local privacy assurance."""
+        import sys
+        import PySide6
+        import telethon
+
+        py_ver = sys.version.split()[0]
+        qt_ver = PySide6.__version__
+        telethon_ver = telethon.__version__
+
+        about_text = (
+            f"<div style='font-family: sans-serif;'>"
+            f"<h2 style='margin-bottom: 4px; color: #5865f2;'>📂 {settings.app_name} v{settings.app_version}</h2>"
+            f"<p style='color: #949ba4; margin-top: 0;'>Desktop Telegram MTProto File Manager & Explorer</p>"
+            f"<hr style='border: 0; border-top: 1px solid #2b2d31;' />"
+            f"<p><b>System & Engine Information:</b></p>"
+            f"<ul style='line-height: 1.5; color: #dbdee1;'>"
+            f"<li><b>Python:</b> {py_ver}</li>"
+            f"<li><b>PySide6 (Qt):</b> {qt_ver}</li>"
+            f"<li><b>Telethon (MTProto):</b> {telethon_ver}</li>"
+            f"<li><b>Database:</b> SQLite FTS5 Full-Text Search Engine</li>"
+            f"</ul>"
+            f"<p><b>🛡️ Local-First Privacy Guarantee:</b></p>"
+            f"<p style='color: #949ba4; font-size: 12px; line-height: 1.4;'>"
+            f"All credentials, session files, databases, and media downloads stay exclusively "
+            f"on your computer in the <code>data/</code> folder. 2FA passwords are kept only in volatile RAM. "
+            f"No data is ever transmitted to external third-party servers."
+            f"</p>"
+            f"<p style='color: #949ba4; font-size: 11px;'>Repository: https://github.com/36-wissam/telegram-file-explorer</p>"
+            f"</div>"
+        )
         QMessageBox.about(
             self,
             f"About {settings.app_name}",
-            f"<h3>{settings.app_name} v{settings.app_version}</h3>"
-            "<p>A local-first desktop application to explore, search, and download your Telegram files.</p>"
-            "<p>Built with Python, Telethon, PySide6, and SQLite.</p>",
+            about_text,
         )
+

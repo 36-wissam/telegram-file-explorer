@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QPushButton,
     QSplitter,
+    QStackedWidget,
     QTableWidget,
     QTableWidgetItem,
     QTreeWidget,
@@ -293,7 +294,55 @@ class FileExplorerWidget(QWidget):
         )
         self.table.itemSelectionChanged.connect(self._on_table_selection_changed)
         self.table.itemDoubleClicked.connect(self._on_table_double_clicked)
-        tc_layout.addWidget(self.table)
+
+        # Empty State Card View
+        self.empty_files_card = QFrame()
+        self.empty_files_card.setStyleSheet("background-color: #1e1f22; border: none;")
+        empty_layout = QVBoxLayout(self.empty_files_card)
+        empty_layout.setAlignment(Qt.AlignCenter)
+        empty_layout.setSpacing(14)
+
+        self.empty_icon = QLabel("🔍")
+        self.empty_icon.setStyleSheet("font-size: 48px; background: transparent;")
+        self.empty_icon.setAlignment(Qt.AlignCenter)
+        empty_layout.addWidget(self.empty_icon)
+
+        self.empty_title = QLabel("No Files Found")
+        self.empty_title.setStyleSheet("font-size: 18px; font-weight: bold; color: #dbdee1; background: transparent;")
+        self.empty_title.setAlignment(Qt.AlignCenter)
+        empty_layout.addWidget(self.empty_title)
+
+        self.empty_desc = QLabel("No files match your current search and filter criteria.")
+        self.empty_desc.setStyleSheet("font-size: 13px; color: #949ba4; max-width: 420px; background: transparent;")
+        self.empty_desc.setAlignment(Qt.AlignCenter)
+        self.empty_desc.setWordWrap(True)
+        empty_layout.addWidget(self.empty_desc)
+
+        self.btn_clear_filters = QPushButton("Clear All Filters")
+        self.btn_clear_filters.setStyleSheet(
+            """
+            QPushButton {
+                background-color: #5865f2;
+                color: #ffffff;
+                border: none;
+                border-radius: 6px;
+                padding: 8px 20px;
+                font-weight: bold;
+                font-size: 13px;
+            }
+            QPushButton:hover {
+                background-color: #4752c4;
+            }
+            """
+        )
+        self.btn_clear_filters.clicked.connect(self._clear_all_filters)
+        empty_layout.addWidget(self.btn_clear_filters, alignment=Qt.AlignCenter)
+
+        # Content Stack: Page 0 = Table, Page 1 = Empty Card
+        self.content_stack = QStackedWidget()
+        self.content_stack.addWidget(self.table)
+        self.content_stack.addWidget(self.empty_files_card)
+        tc_layout.addWidget(self.content_stack)
 
         # Pagination & Summary Footer
         footer = QFrame()
@@ -402,6 +451,31 @@ class FileExplorerWidget(QWidget):
 
     def _render_table(self):
         """Populate table with fetched files with optimized batch rendering."""
+        if len(self._cached_files) == 0:
+            has_active_filters = (
+                bool(self._search_query)
+                or self._current_category not in (None, "ALL")
+                or self._current_chat_id is not None
+                or self._advanced_filters.chat_id is not None
+                or self._advanced_filters.extension is not None
+                or self._advanced_filters.min_size_bytes is not None
+                or self._advanced_filters.max_size_bytes is not None
+                or self._advanced_filters.start_date is not None
+            )
+            if has_active_filters:
+                self.empty_icon.setText("🔍")
+                self.empty_title.setText("No Matching Files Found")
+                self.empty_desc.setText("No indexed files match your active search terms or filters.")
+                self.btn_clear_filters.setVisible(True)
+            else:
+                self.empty_icon.setText("📂")
+                self.empty_title.setText("No Indexed Files Yet")
+                self.empty_desc.setText("No files have been indexed from your Telegram chats yet. Open the Indexing Manager to scan and index your chats.")
+                self.btn_clear_filters.setVisible(False)
+            self.content_stack.setCurrentIndex(1)
+        else:
+            self.content_stack.setCurrentIndex(0)
+
         self.table.setUpdatesEnabled(False)
         self.table.blockSignals(True)
         try:
@@ -505,4 +579,20 @@ class FileExplorerWidget(QWidget):
             from .preview_panel import PreviewDialog
             dialog = PreviewDialog(file_item, parent=self)
             dialog.exec()
+
+    def focus_search(self):
+        """Focus search input field and select all existing text."""
+        self.search_input.setFocus()
+        self.search_input.selectAll()
+
+    def _clear_all_filters(self):
+        """Reset all search filters, categories, and query strings."""
+        self.search_input.clear()
+        self._search_query = ""
+        self.filter_bar.reset_filters()
+        self._current_category = None
+        self._current_chat_id = None
+        self.category_tree.setCurrentItem(self.category_tree.topLevelItem(0))
+        self._page = 0
+        self.reload_files()
 
