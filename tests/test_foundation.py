@@ -56,3 +56,32 @@ def test_main_window_initialization(qapp):
     assert window.centralWidget() is not None
     assert window.statusBar() is not None
     window.close()
+
+
+def test_local_credentials_storage(tmp_path):
+    """Verify local credentials can be saved and loaded strictly on local computer."""
+    from app.core.config import Settings
+
+    settings = Settings()
+    # Use temporary data dir
+    settings.data_dir = tmp_path
+    settings.sessions_dir = tmp_path / "sessions"
+    settings.ensure_directories()
+
+    # Save credentials locally
+    success = settings.save_local_credentials(12345678, "abcdef0123456789abcdef0123456789")
+    assert success is True
+    assert (tmp_path / "config.json").exists()
+
+    # Create new instance pointing to same tmp_path
+    new_settings = Settings()
+    new_settings.data_dir = tmp_path
+    new_settings._load_local_config()
+    assert new_settings.api_id == 12345678
+    assert new_settings.api_hash == "abcdef0123456789abcdef0123456789"
+    assert new_settings.is_telegram_configured is True
+
+    # Clear credentials
+    new_settings.clear_local_credentials()
+    assert not (tmp_path / "config.json").exists()
+

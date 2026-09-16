@@ -62,10 +62,77 @@ class Settings:
         # Ensure required directories exist
         self.ensure_directories()
 
+        # Load local settings if .env did not supply credentials
+        self._load_local_config()
+
     def ensure_directories(self) -> None:
         """Create required runtime directories if they do not exist."""
         for path in [self.data_dir, self.download_dir, self.logs_dir, self.sessions_dir]:
             path.mkdir(parents=True, exist_ok=True)
+
+    @property
+    def local_config_path(self) -> Path:
+        """Path to local user configuration file (kept strictly on local device)."""
+        return self.data_dir / "config.json"
+
+    def _load_local_config(self) -> None:
+        """Load API credentials and preferences from local config.json if available."""
+        if not self.local_config_path.exists():
+            return
+
+        try:
+            import json
+            with open(self.local_config_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+
+            if not self.api_id and "api_id" in data:
+                try:
+                    self.api_id = int(data["api_id"])
+                except (ValueError, TypeError):
+                    pass
+
+            if not self.api_hash and "api_hash" in data:
+                self.api_hash = str(data["api_hash"]).strip() or None
+
+            if "session_name" in data and data["session_name"]:
+                self.session_name = str(data["session_name"]).strip()
+
+            if "download_dir" in data and data["download_dir"]:
+                self.download_dir = Path(data["download_dir"]).resolve()
+
+        except Exception:
+            pass
+
+    def save_local_credentials(self, api_id: int, api_hash: str) -> bool:
+        """Save API credentials locally into data/config.json (100% on user's machine)."""
+        import json
+        self.api_id = int(api_id)
+        self.api_hash = str(api_hash).strip()
+        self.ensure_directories()
+
+        data = {
+            "api_id": self.api_id,
+            "api_hash": self.api_hash,
+            "session_name": self.session_name,
+            "download_dir": str(self.download_dir),
+        }
+
+        try:
+            with open(self.local_config_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+            return True
+        except Exception:
+            return False
+
+    def clear_local_credentials(self) -> None:
+        """Clear credentials from memory and local file."""
+        self.api_id = None
+        self.api_hash = None
+        if self.local_config_path.exists():
+            try:
+                self.local_config_path.unlink()
+            except Exception:
+                pass
 
     @property
     def is_telegram_configured(self) -> bool:
