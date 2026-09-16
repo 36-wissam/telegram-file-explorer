@@ -52,6 +52,8 @@ class MainWindow(QMainWindow):
         self.auth_service = auth_service or TelegramAuthService(self.client_manager)
         self.chat_service = chat_service or TelegramChatService(self.client_manager)
         self.repo = repo or DatabaseRepository()
+        from ..services.downloader import DownloadManager
+        self.download_manager = DownloadManager(self.client_manager)
 
 
         self._init_menu_bar()
@@ -91,11 +93,19 @@ class MainWindow(QMainWindow):
         self.action_logout.setEnabled(False)
         self.account_menu.addAction(self.action_logout)
 
+        # Downloads Menu
+        downloads_menu = menu_bar.addMenu("&Downloads")
+        self.action_view_downloads = QAction("View &Downloads...", self)
+        self.action_view_downloads.setShortcut("Ctrl+J")
+        self.action_view_downloads.triggered.connect(self.open_download_manager)
+        downloads_menu.addAction(self.action_view_downloads)
+
         # Help Menu
         help_menu = menu_bar.addMenu("&Help")
         about_action = QAction("&About", self)
         about_action.triggered.connect(self._show_about)
         help_menu.addAction(about_action)
+
 
     def _init_ui(self):
         """Construct central stacked widget layout."""
@@ -240,10 +250,43 @@ class MainWindow(QMainWindow):
 
         # View 1: Main File Explorer
         self.file_explorer_widget = FileExplorerWidget(self.repo)
+        self.file_explorer_widget.preview_panel.download_requested.connect(self._on_download_file)
         self.view_stack.addWidget(self.file_explorer_widget)
 
         page_layout.addWidget(self.view_stack)
         return page
+
+    def open_download_manager(self):
+        """Open the downloads inspector dialog."""
+        from .download_manager import DownloadManagerDialog
+        dialog = DownloadManagerDialog(self.download_manager, parent=self)
+        dialog.exec()
+
+    def _on_download_file(self, file_model):
+        """Prompt destination directory and begin background download."""
+        from PySide6.QtWidgets import QFileDialog
+        chosen_dir = QFileDialog.getExistingDirectory(
+            self,
+            "Select Download Destination Folder",
+            str(settings.download_dir),
+        )
+        if not chosen_dir:
+            return
+
+        from pathlib import Path
+        dest_path = Path(chosen_dir)
+        task = self.download_manager.start_download(
+            chat_id=file_model.chat_id,
+            message_id=file_model.message_id,
+            file_id=file_model.file_id,
+            filename=file_model.filename,
+            destination_dir=dest_path,
+            total_size=file_model.file_size,
+        )
+
+        self.status_bar.showMessage(f"Downloading {file_model.filename} to {dest_path.name}...")
+        self.open_download_manager()
+
 
     def _switch_main_view(self, index: int):
         """Switch between Chats Discovery (0) and File Explorer (1)."""
