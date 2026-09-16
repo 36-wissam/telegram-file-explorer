@@ -214,6 +214,8 @@ class DatabaseRepository:
         extension: Optional[str] = None,
         min_size: Optional[int] = None,
         max_size: Optional[int] = None,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
         limit: int = 100,
         offset: int = 0,
         sort_by: str = "date",
@@ -239,6 +241,12 @@ class DatabaseRepository:
 
             if max_size is not None:
                 query = query.filter(IndexedFileModel.file_size <= max_size)
+
+            if start_date is not None:
+                query = query.filter(IndexedFileModel.message_date >= start_date)
+
+            if end_date is not None:
+                query = query.filter(IndexedFileModel.message_date <= end_date)
 
             if search_query:
                 like_pattern = f"%{search_query.strip()}%"
@@ -267,6 +275,11 @@ class DatabaseRepository:
         chat_id: Optional[int] = None,
         media_type: Optional[str] = None,
         search_query: Optional[str] = None,
+        extension: Optional[str] = None,
+        min_size: Optional[int] = None,
+        max_size: Optional[int] = None,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
     ) -> int:
         """Count total files matching filter criteria."""
         session = get_session(self.db_path)
@@ -278,6 +291,22 @@ class DatabaseRepository:
 
             if media_type is not None:
                 query = query.filter(IndexedFileModel.media_type == media_type.upper())
+
+            if extension:
+                clean_ext = extension if extension.startswith(".") else f".{extension}"
+                query = query.filter(IndexedFileModel.extension == clean_ext.lower())
+
+            if min_size is not None:
+                query = query.filter(IndexedFileModel.file_size >= min_size)
+
+            if max_size is not None:
+                query = query.filter(IndexedFileModel.file_size <= max_size)
+
+            if start_date is not None:
+                query = query.filter(IndexedFileModel.message_date >= start_date)
+
+            if end_date is not None:
+                query = query.filter(IndexedFileModel.message_date <= end_date)
 
             if search_query:
                 like_pattern = f"%{search_query.strip()}%"

@@ -25,6 +25,7 @@ from ..core.logger import get_logger
 from ..database.models import IndexedFileModel
 from ..database.repository import DatabaseRepository
 from ..services.media_parser import MediaType
+from .filter_bar import AdvancedFilterBar, AdvancedFilterCriteria
 
 logger = get_logger("ui.file_explorer")
 
@@ -63,6 +64,7 @@ class FileExplorerWidget(QWidget):
         self.search_service = SearchEngineService(self.repo)
         self._current_category: Optional[str] = None
         self._current_chat_id: Optional[int] = None
+        self._advanced_filters: AdvancedFilterCriteria = AdvancedFilterCriteria()
         self._search_query: str = ""
         self._sort_by: str = "date"
         self._sort_desc: bool = True
@@ -72,6 +74,7 @@ class FileExplorerWidget(QWidget):
         self._cached_files: List[IndexedFileModel] = []
 
         self._init_ui()
+        self.refresh_chats_filter()
         self.reload_files()
 
 
@@ -83,6 +86,12 @@ class FileExplorerWidget(QWidget):
         # Top Navigation & Search Toolbar
         toolbar = self._create_toolbar()
         layout.addWidget(toolbar)
+
+        # Collapsible Advanced Filter Bar
+        self.filter_bar = AdvancedFilterBar(self)
+        self.filter_bar.setVisible(False)
+        self.filter_bar.filters_changed.connect(self._on_advanced_filters_changed)
+        layout.addWidget(self.filter_bar)
 
         # Splitter: Sidebar (Categories & Chats) + Central Table View
         splitter = QSplitter(Qt.Horizontal)
@@ -148,6 +157,12 @@ class FileExplorerWidget(QWidget):
         ])
         self.sort_combo.currentIndexChanged.connect(self._on_sort_changed)
         t_layout.addWidget(self.sort_combo)
+
+        # Advanced Filters Toggle Button
+        self.btn_toggle_filters = QPushButton("🔽 Filters")
+        self.btn_toggle_filters.setCheckable(True)
+        self.btn_toggle_filters.clicked.connect(self._toggle_filter_bar)
+        t_layout.addWidget(self.btn_toggle_filters)
 
         # Refresh Button
         self.btn_refresh = QPushButton("🔄 Refresh")
@@ -328,6 +343,28 @@ class FileExplorerWidget(QWidget):
         return pane
 
 
+    def _toggle_filter_bar(self, checked: bool):
+        """Show or hide the advanced filters panel."""
+        self.filter_bar.setVisible(checked)
+        self.btn_toggle_filters.setText("🔼 Filters" if checked else "🔽 Filters")
+
+    def _on_advanced_filters_changed(self, criteria: AdvancedFilterCriteria):
+        """Respond to criteria changes from the AdvancedFilterBar."""
+        self._advanced_filters = criteria
+        self._sort_by = criteria.sort_by
+        self._sort_desc = criteria.sort_desc
+        self._page = 0
+        self.reload_files()
+
+    def refresh_chats_filter(self):
+        """Populate source chat list in filter bar from database."""
+        try:
+            chats = self.repo.get_chats()
+            chat_dicts = [{"id": c.id, "title": c.title} for c in chats]
+            self.filter_bar.populate_chats(chat_dicts)
+        except Exception as e:
+            logger.warning(f"Could not load chats for filter bar: {e}")
+
     def set_chat_filter(self, chat_id: Optional[int]):
         """Filter files for a specific chat."""
         self._current_chat_id = chat_id
@@ -337,12 +374,22 @@ class FileExplorerWidget(QWidget):
     def reload_files(self):
         """Fetch files using FTS5 search service with active filters and render table."""
         category = self._current_category if self._current_category != "ALL" else None
+        effective_chat_id = (
+            self._advanced_filters.chat_id
+            if self._advanced_filters.chat_id is not None
+            else self._current_chat_id
+        )
         offset = self._page * self._page_size
 
         self._cached_files, self._total_files = self.search_service.search_files(
             query_text=self._search_query,
-            chat_id=self._current_chat_id,
+            chat_id=effective_chat_id,
             media_type=category,
+            extension=self._advanced_filters.extension,
+            min_size=self._advanced_filters.min_size_bytes,
+            max_size=self._advanced_filters.max_size_bytes,
+            start_date=self._advanced_filters.start_date,
+            end_date=self._advanced_filters.end_date,
             sort_by=self._sort_by,
             sort_desc=self._sort_desc,
             limit=self._page_size,

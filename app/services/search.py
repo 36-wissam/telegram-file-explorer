@@ -55,6 +55,8 @@ class SearchEngineService:
                 extension=extension,
                 min_size=min_size,
                 max_size=max_size,
+                start_date=start_date,
+                end_date=end_date,
                 limit=limit,
                 offset=offset,
                 sort_by=sort_by,
@@ -63,6 +65,11 @@ class SearchEngineService:
             total = self.repo.get_files_count(
                 chat_id=chat_id,
                 media_type=media_type,
+                extension=extension,
+                min_size=min_size,
+                max_size=max_size,
+                start_date=start_date,
+                end_date=end_date,
             )
             return files, total
 
