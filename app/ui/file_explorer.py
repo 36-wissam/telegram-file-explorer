@@ -401,38 +401,44 @@ class FileExplorerWidget(QWidget):
 
 
     def _render_table(self):
-        """Populate table with fetched files."""
-        self.table.setRowCount(0)
-        self.table.setRowCount(len(self._cached_files))
+        """Populate table with fetched files with optimized batch rendering."""
+        self.table.setUpdatesEnabled(False)
+        self.table.blockSignals(True)
+        try:
+            self.table.setRowCount(0)
+            self.table.setRowCount(len(self._cached_files))
 
-        for row, file_item in enumerate(self._cached_files):
-            # Filename with category icon
-            icon = CATEGORY_ICONS.get(file_item.media_type, "📎")
-            name_item = QTableWidgetItem(f"{icon}  {file_item.filename}")
-            name_item.setData(Qt.UserRole, file_item)
-            self.table.setItem(row, 0, name_item)
+            for row, file_item in enumerate(self._cached_files):
+                # Filename with category icon
+                icon = CATEGORY_ICONS.get(file_item.media_type, "📎")
+                name_item = QTableWidgetItem(f"{icon}  {file_item.filename}")
+                name_item.setData(Qt.UserRole, file_item)
+                self.table.setItem(row, 0, name_item)
 
-            # Chat title
-            chat_item = QTableWidgetItem(file_item.chat_title or "Unknown")
-            chat_item.setForeground(QColor("#949ba4"))
-            self.table.setItem(row, 1, chat_item)
+                # Chat title
+                chat_item = QTableWidgetItem(file_item.chat_title or "Unknown")
+                chat_item.setForeground(QColor("#949ba4"))
+                self.table.setItem(row, 1, chat_item)
 
-            # Media Type
-            type_item = QTableWidgetItem(file_item.media_type)
-            type_item.setForeground(QColor("#00aff4"))
-            self.table.setItem(row, 2, type_item)
+                # Media Type
+                type_item = QTableWidgetItem(file_item.media_type)
+                type_item.setForeground(QColor("#00aff4"))
+                self.table.setItem(row, 2, type_item)
 
-            # Size
-            size_str = format_bytes(file_item.file_size)
-            size_item = QTableWidgetItem(size_str)
-            size_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            self.table.setItem(row, 3, size_item)
+                # Size
+                size_str = format_bytes(file_item.file_size)
+                size_item = QTableWidgetItem(size_str)
+                size_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+                self.table.setItem(row, 3, size_item)
 
-            # Date
-            date_str = file_item.message_date.strftime("%Y-%m-%d %H:%M") if file_item.message_date else "-"
-            date_item = QTableWidgetItem(date_str)
-            date_item.setForeground(QColor("#949ba4"))
-            self.table.setItem(row, 4, date_item)
+                # Date
+                date_str = file_item.message_date.strftime("%Y-%m-%d %H:%M") if file_item.message_date else "-"
+                date_item = QTableWidgetItem(date_str)
+                date_item.setForeground(QColor("#949ba4"))
+                self.table.setItem(row, 4, date_item)
+        finally:
+            self.table.blockSignals(False)
+            self.table.setUpdatesEnabled(True)
 
     def _update_pagination(self):
         """Update pagination button states and labels."""

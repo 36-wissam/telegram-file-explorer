@@ -9,6 +9,7 @@ from .exceptions import (
     TelegramAppError,
     TelegramClientError,
 )
+from .resilience import TelegramRateLimitError, execute_with_retry
 
 __all__ = [
     "TelegramClientManager",
@@ -25,6 +26,8 @@ __all__ = [
     "InvalidApiIdError",
     "InvalidApiHashError",
     "TelegramClientError",
+    "TelegramRateLimitError",
+    "execute_with_retry",
 ]
 
 

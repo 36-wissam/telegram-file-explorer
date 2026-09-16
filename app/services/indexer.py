@@ -5,6 +5,7 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, List, Optional, Tuple
+from telethon.errors import FloodWaitError
 
 from ..core.config import settings
 from ..core.logger import get_logger
@@ -23,12 +24,15 @@ class MediaIndexerService:
         self._init_sqlite()
 
     def _get_connection(self) -> sqlite3.Connection:
-        """Create a sqlite3 connection with WAL mode and row factory."""
+        """Create a sqlite3 connection with WAL mode, 64MB cache, and row factory."""
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(str(self.db_path), timeout=30.0)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL;")
         conn.execute("PRAGMA synchronous=NORMAL;")
+        conn.execute("PRAGMA cache_size=-64000;")
+        conn.execute("PRAGMA temp_store=MEMORY;")
+        conn.execute("PRAGMA mmap_size=268435456;")
         return conn
 
     def _init_sqlite(self) -> None:
@@ -65,6 +69,8 @@ class MediaIndexerService:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_files_type ON indexed_files (media_type);")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_files_date ON indexed_files (message_date);")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_files_msg ON indexed_files (chat_id, message_id);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_files_chat_type_date ON indexed_files (chat_id, media_type, message_date);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_files_size_date ON indexed_files (file_size, message_date);")
 
             # Resumable indexing state table
             cursor.execute(
@@ -248,30 +254,43 @@ class MediaIndexerService:
         messages_scanned = 0
 
         # iter_messages with min_id=last_id and reverse=True indexes chronological forward from last checkpoint
-        async for message in client.iter_messages(chat_id, min_id=last_id, limit=limit, reverse=True):
-            if cancel_check and cancel_check():
-                logger.info("Indexing cancelled by user for chat %s", chat_title)
-                break
+        try:
+            async for message in client.iter_messages(chat_id, min_id=last_id, limit=limit, reverse=True):
+                if cancel_check and cancel_check():
+                    logger.info("Indexing cancelled by user for chat %s", chat_title)
+                    break
 
-            if pause_event:
-                await pause_event.wait()
+                if pause_event:
+                    await pause_event.wait()
 
-            messages_scanned += 1
-            if message.id > latest_scanned_id:
-                latest_scanned_id = message.id
+                messages_scanned += 1
+                if message.id > latest_scanned_id:
+                    latest_scanned_id = message.id
 
-            meta = parse_message_media(message, chat_id, chat_title)
-            if meta:
-                current_batch.append(meta)
-                newly_indexed += 1
+                meta = parse_message_media(message, chat_id, chat_title)
+                if meta:
+                    current_batch.append(meta)
+                    newly_indexed += 1
 
-                if len(current_batch) >= batch_size:
-                    self.save_batch_files(current_batch)
-                    self.update_indexing_state(chat_id, chat_title, latest_scanned_id, len(current_batch), is_completed=False)
-                    current_batch.clear()
+                    if len(current_batch) >= batch_size:
+                        self.save_batch_files(current_batch)
+                        self.update_indexing_state(chat_id, chat_title, latest_scanned_id, len(current_batch), is_completed=False)
+                        current_batch.clear()
 
-                    if progress_callback:
-                        progress_callback(newly_indexed, messages_scanned)
+                        if progress_callback:
+                            progress_callback(newly_indexed, messages_scanned)
+        except FloodWaitError as fwe:
+            logger.warning("FloodWait encountered for '%s': must wait %d seconds.", chat_title, fwe.seconds)
+            if current_batch:
+                self.save_batch_files(current_batch)
+                self.update_indexing_state(chat_id, chat_title, latest_scanned_id, len(current_batch), is_completed=False)
+                current_batch.clear()
+
+            if fwe.seconds <= 30:
+                logger.info("Automatically waiting %d seconds for flood backoff...", fwe.seconds + 1)
+                await asyncio.sleep(fwe.seconds + 1)
+            else:
+                raise
 
         # Flush remaining batch
         if current_batch:

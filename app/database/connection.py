@@ -34,13 +34,16 @@ def get_engine(db_path: Optional[Path] = None):
             future=True,
         )
 
-        # Set SQLite pragmas for foreign keys and WAL mode
+        # Set SQLite pragmas for foreign keys, WAL mode, page cache, memory temp store, and mmap
         @event.listens_for(engine, "connect")
         def set_sqlite_pragma(dbapi_connection, connection_record):
             cursor = dbapi_connection.cursor()
             cursor.execute("PRAGMA foreign_keys=ON;")
             cursor.execute("PRAGMA journal_mode=WAL;")
             cursor.execute("PRAGMA synchronous=NORMAL;")
+            cursor.execute("PRAGMA cache_size=-64000;")  # 64MB page cache
+            cursor.execute("PRAGMA temp_store=MEMORY;")
+            cursor.execute("PRAGMA mmap_size=268435456;")  # 256MB memory mapped I/O
             cursor.close()
 
         _ENGINE = engine
@@ -75,3 +78,20 @@ def init_db(db_path: Optional[Path] = None) -> None:
     engine = get_engine(db_path)
     Base.metadata.create_all(bind=engine)
     logger.info("SQLAlchemy database metadata initialized successfully.")
+
+
+def vacuum_db(db_path: Optional[Path] = None) -> None:
+    """Rebuild SQLite database file to reclaim deleted space and optimize pages."""
+    engine = get_engine(db_path)
+    with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+        conn.exec_driver_sql("VACUUM;")
+    logger.info("Database VACUUM completed.")
+
+
+def optimize_db(db_path: Optional[Path] = None) -> None:
+    """Run SQLite ANALYZE and PRAGMA optimize for maximum query planner speed."""
+    engine = get_engine(db_path)
+    with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+        conn.exec_driver_sql("PRAGMA optimize;")
+        conn.exec_driver_sql("ANALYZE;")
+    logger.info("Database PRAGMA optimize and ANALYZE completed.")
