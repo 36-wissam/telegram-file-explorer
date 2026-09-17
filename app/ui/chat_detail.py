@@ -19,7 +19,7 @@ from .chat_list import TYPE_COLORS
 class ChatDetailWidget(QWidget):
     """Displays detailed view of the currently selected Telegram chat."""
 
-    index_chat_requested = Signal(int)  # Emits chat_id to open indexing manager
+    index_chat_requested = Signal(object)  # Emits chat_id to open indexing manager
 
     def __init__(self, parent=None):
         super().__init__(parent)

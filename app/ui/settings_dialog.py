@@ -2,8 +2,8 @@
 
 from pathlib import Path
 from typing import Optional
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QFont
+from PySide6.QtCore import Qt, Signal, QUrl
+from PySide6.QtGui import QDesktopServices, QFont
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -26,6 +26,7 @@ from ..core.config import settings
 from ..core.logger import get_logger
 from ..database.repository import DatabaseRepository
 from ..telegram.auth import TelegramAuthService
+from .icons import get_icon, get_pixmap
 
 logger = get_logger("ui.settings_dialog")
 
@@ -46,8 +47,8 @@ class SettingsDialog(QDialog):
         self.auth_service = auth_service
         self.repo = repo or DatabaseRepository()
         self.setWindowTitle("Settings")
-        self.resize(580, 480)
-        self.setMinimumSize(500, 400)
+        self.resize(620, 500)
+        self.setMinimumSize(520, 420)
         self._init_ui()
 
     def _init_ui(self):
@@ -91,7 +92,7 @@ class SettingsDialog(QDialog):
             QLineEdit {
                 background-color: #111113;
                 border: 1px solid #27272A;
-                border-radius: 6px;
+                border-radius: 8px;
                 color: #F4F4F5;
                 padding: 6px 12px;
                 font-size: 13px;
@@ -102,7 +103,7 @@ class SettingsDialog(QDialog):
             QComboBox {
                 background-color: #111113;
                 border: 1px solid #27272A;
-                border-radius: 6px;
+                border-radius: 8px;
                 color: #F4F4F5;
                 padding: 6px 12px;
                 font-size: 13px;
@@ -110,7 +111,7 @@ class SettingsDialog(QDialog):
             QPushButton {
                 background-color: #27272A;
                 border: 1px solid #3F3F46;
-                border-radius: 6px;
+                border-radius: 8px;
                 color: #F4F4F5;
                 padding: 6px 14px;
                 font-size: 13px;
@@ -118,6 +119,7 @@ class SettingsDialog(QDialog):
             }
             QPushButton:hover {
                 background-color: #3F3F46;
+                border-color: #71717A;
                 color: #FFFFFF;
             }
             QPushButton#primaryButton {
@@ -141,7 +143,7 @@ class SettingsDialog(QDialog):
             }
             QGroupBox {
                 border: 1px solid #27272A;
-                border-radius: 6px;
+                border-radius: 8px;
                 margin-top: 14px;
                 padding-top: 14px;
                 font-weight: 600;
@@ -163,8 +165,8 @@ class SettingsDialog(QDialog):
         self.tabs = QTabWidget(self)
         self.tabs.addTab(self._create_account_tab(), "Account")
         self.tabs.addTab(self._create_appearance_tab(), "Appearance")
+        self.tabs.addTab(self._create_downloads_tab(), "Downloads")
         self.tabs.addTab(self._create_storage_tab(), "Storage")
-        self.tabs.addTab(self._create_database_tab(), "Database")
         self.tabs.addTab(self._create_about_tab(), "About")
         main_layout.addWidget(self.tabs)
 
@@ -214,20 +216,22 @@ class SettingsDialog(QDialog):
 
         layout.addWidget(group_user)
 
-        # Telegram API Details
-        group_api = QGroupBox("Telegram MTProto API Credentials", tab)
-        api_layout = QGridLayout(group_api)
-        api_layout.setSpacing(10)
+        # Telegram Connection State
+        group_status = QGroupBox("Connection Status", tab)
+        s_layout = QGridLayout(group_status)
+        s_layout.setSpacing(10)
 
-        api_layout.addWidget(QLabel("API ID:"), 0, 0)
-        api_id_val = str(settings.api_id) if settings.api_id else "Not set"
-        api_layout.addWidget(QLabel(api_id_val), 0, 1)
+        s_layout.addWidget(QLabel("MTProto Protocol:"), 0, 0)
+        lbl_mtproto = QLabel("Active (Encrypted Local-First)")
+        lbl_mtproto.setStyleSheet("color: #22C55E; font-weight: 500;")
+        s_layout.addWidget(lbl_mtproto, 0, 1)
 
-        api_layout.addWidget(QLabel("API Hash:"), 1, 0)
-        api_hash_val = (settings.api_hash[:4] + "..." + settings.api_hash[-4:]) if settings.api_hash else "Not set"
-        api_layout.addWidget(QLabel(api_hash_val), 1, 1)
+        s_layout.addWidget(QLabel("Local Session Path:"), 1, 0)
+        lbl_sess = QLabel(str(settings.session_path.name))
+        lbl_sess.setStyleSheet("color: #71717A; font-size: 11px;")
+        s_layout.addWidget(lbl_sess, 1, 1)
 
-        layout.addWidget(group_api)
+        layout.addWidget(group_status)
 
         # Logout Button
         logout_row = QHBoxLayout()
@@ -235,6 +239,7 @@ class SettingsDialog(QDialog):
 
         btn_sign_out = QPushButton("Sign Out", tab)
         btn_sign_out.setObjectName("dangerButton")
+        btn_sign_out.setIcon(get_icon("log_out", color="#FECACA", size=13))
         btn_sign_out.clicked.connect(self._on_logout_click)
         logout_row.addWidget(btn_sign_out)
 
@@ -253,30 +258,31 @@ class SettingsDialog(QDialog):
 
         t_layout.addWidget(QLabel("Theme Mode:"), 0, 0)
         self.combo_theme = QComboBox(group_theme)
-        self.combo_theme.addItems(["Dark (Default)", "Light", "System Synchronized"])
+        self.combo_theme.addItems(["Dark (Default)", "Light", "System"])
+        self.combo_theme.currentIndexChanged.connect(self._on_theme_changed)
         t_layout.addWidget(self.combo_theme, 0, 1)
 
         layout.addWidget(group_theme)
 
-        group_grid = QGroupBox("Media Viewport", tab)
+        group_grid = QGroupBox("Media Grid Viewport", tab)
         g_layout = QGridLayout(group_grid)
         g_layout.setSpacing(12)
 
-        g_layout.addWidget(QLabel("Thumbnail Size:"), 0, 0)
+        g_layout.addWidget(QLabel("Card Width:"), 0, 0)
         self.combo_thumb_size = QComboBox(group_grid)
-        self.combo_thumb_size.addItems(["Standard (200px)", "Compact (160px)", "Large (240px)"])
+        self.combo_thumb_size.addItems(["Standard (200px)", "Compact (180px)", "Large (220px)"])
         g_layout.addWidget(self.combo_thumb_size, 0, 1)
 
         layout.addWidget(group_grid)
         layout.addStretch()
         return tab
 
-    def _create_storage_tab(self) -> QWidget:
+    def _create_downloads_tab(self) -> QWidget:
         tab = QWidget()
         layout = QVBoxLayout(tab)
         layout.setSpacing(14)
 
-        group_dl = QGroupBox("Downloads Directory", tab)
+        group_dl = QGroupBox("Download Location", tab)
         d_layout = QVBoxLayout(group_dl)
         d_layout.setSpacing(10)
 
@@ -285,38 +291,41 @@ class SettingsDialog(QDialog):
         self.edit_dl_path.setReadOnly(True)
         path_row.addWidget(self.edit_dl_path)
 
-        btn_browse = QPushButton("Browse...", tab)
+        btn_browse = QPushButton("Change...", tab)
+        btn_browse.setIcon(get_icon("folder", color="#F4F4F5", size=13))
         btn_browse.clicked.connect(self._on_browse_dl_path)
         path_row.addWidget(btn_browse)
         d_layout.addLayout(path_row)
 
         btn_open_folder = QPushButton("Open Folder in Explorer", tab)
+        btn_open_folder.setIcon(get_icon("folder_open", color="#F4F4F5", size=13))
         btn_open_folder.clicked.connect(self._on_open_dl_folder)
         d_layout.addWidget(btn_open_folder, alignment=Qt.AlignLeft)
 
         layout.addWidget(group_dl)
+        layout.addStretch()
+        return tab
+
+    def _create_storage_tab(self) -> QWidget:
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setSpacing(14)
 
         group_cache = QGroupBox("Thumbnails Cache", tab)
         c_layout = QHBoxLayout(group_cache)
         c_layout.setSpacing(10)
 
         cache_size_str = self._get_cache_size_str()
-        lbl_cache = QLabel(f"Cached Thumbnails: {cache_size_str}")
-        c_layout.addWidget(lbl_cache)
+        self.lbl_cache = QLabel(f"Cached Thumbnails: {cache_size_str}")
+        c_layout.addWidget(self.lbl_cache)
         c_layout.addStretch()
 
         btn_clear_cache = QPushButton("Clear Cache", tab)
-        btn_clear_cache.clicked.connect(lambda: self._on_clear_cache(lbl_cache))
+        btn_clear_cache.setIcon(get_icon("trash_2", color="#F4F4F5", size=13))
+        btn_clear_cache.clicked.connect(self._on_clear_cache)
         c_layout.addWidget(btn_clear_cache)
 
         layout.addWidget(group_cache)
-        layout.addStretch()
-        return tab
-
-    def _create_database_tab(self) -> QWidget:
-        tab = QWidget()
-        layout = QVBoxLayout(tab)
-        layout.setSpacing(14)
 
         group_db = QGroupBox("Local Metadata Database", tab)
         db_layout = QGridLayout(group_db)
@@ -344,8 +353,9 @@ class SettingsDialog(QDialog):
         layout.addWidget(group_db)
 
         # Danger zone
-        btn_clear_db = QPushButton("Clear Indexed Metadata", tab)
+        btn_clear_db = QPushButton("Clear Local Metadata", tab)
         btn_clear_db.setObjectName("dangerButton")
+        btn_clear_db.setIcon(get_icon("trash_2", color="#FECACA", size=13))
         btn_clear_db.clicked.connect(self._on_clear_database)
         layout.addWidget(btn_clear_db, alignment=Qt.AlignLeft)
 
@@ -376,7 +386,7 @@ class SettingsDialog(QDialog):
 
         info_box = QFrame(tab)
         info_box.setStyleSheet(
-            "background-color: #111113; border: 1px solid #27272A; border-radius: 6px; padding: 12px;"
+            "background-color: #111113; border: 1px solid #27272A; border-radius: 8px; padding: 12px;"
         )
         ib_layout = QGridLayout(info_box)
         ib_layout.setSpacing(8)
@@ -394,6 +404,12 @@ class SettingsDialog(QDialog):
         ib_layout.addWidget(QLabel("SQLite FTS5 Full-Text Search"), 3, 1)
 
         layout.addWidget(info_box)
+
+        # GitHub Button with SVG GitHub Icon
+        btn_github = QPushButton("GitHub Repository", tab)
+        btn_github.setIcon(get_icon("github", color="#F4F4F5", size=16))
+        btn_github.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://github.com/36-wissam/telegram-file-explorer")))
+        layout.addWidget(btn_github, alignment=Qt.AlignLeft)
 
         # Privacy Notice
         privacy = QLabel(
@@ -432,7 +448,7 @@ class SettingsDialog(QDialog):
             return f"{mb:.1f} MB"
         return f"{total / 1024:.1f} KB"
 
-    def _on_clear_cache(self, label: QLabel):
+    def _on_clear_cache(self):
         cache_dir = settings.thumbnail_dir
         if cache_dir.exists():
             for f in cache_dir.glob("*"):
@@ -441,7 +457,7 @@ class SettingsDialog(QDialog):
                         f.unlink()
                     except Exception:
                         pass
-        label.setText("Cached Thumbnails: 0 KB")
+        self.lbl_cache.setText("Cached Thumbnails: 0 KB")
         QMessageBox.information(self, "Cache Cleared", "Thumbnail cache has been cleared.")
 
     def _on_clear_database(self):
@@ -462,6 +478,11 @@ class SettingsDialog(QDialog):
                 QMessageBox.information(self, "Database Cleared", "Local media metadata has been cleared.")
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to clear database: {e}")
+
+    def _on_theme_changed(self, index: int):
+        theme_names = ["dark", "light", "system"]
+        chosen = theme_names[index]
+        self.theme_changed.emit(chosen)
 
     def _on_logout_click(self):
         self.accept()

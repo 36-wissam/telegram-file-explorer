@@ -21,6 +21,7 @@ from ..telegram.client import validate_api_credentials
 from ..telegram.exceptions import ConfigurationError
 from ..core.logger import get_logger
 from ..telegram.auth import AuthState, TelegramAuthService
+from .icons import get_icon
 
 logger = get_logger("ui.inline_auth")
 
@@ -62,9 +63,9 @@ class InlineAuthWidget(QWidget):
             self.step_labels.append(lbl)
             self.breadcrumb_layout.addWidget(lbl)
             if idx < len(steps) - 1:
-                arrow = QLabel(">")
-                arrow.setStyleSheet("color: #71717A; font-size: 11px; font-weight: bold;")
-                self.breadcrumb_layout.addWidget(arrow)
+                sep = QLabel("-")
+                sep.setStyleSheet("color: #71717A; font-size: 11px; font-weight: bold;")
+                self.breadcrumb_layout.addWidget(sep)
 
         main_layout.addLayout(self.breadcrumb_layout)
 
@@ -264,7 +265,6 @@ class InlineAuthWidget(QWidget):
 
         def on_error(exc):
             self.btn_submit_code.setEnabled(True)
-            # Check if 2FA password is required
             if (
                 isinstance(exc, SessionPasswordNeededError)
                 or "SessionPasswordNeededError" in type(exc).__name__
@@ -412,4 +412,3 @@ class InlineAuthWidget(QWidget):
         self.code_input.clear()
         self.password_input.clear()
         self._set_initial_state()
-

@@ -1,4 +1,4 @@
-"""Desktop media grid card widget (180-220px) conforming strictly to specification (no emojis)."""
+"""Desktop media grid card widget (180-220px) conforming strictly to specification (Lucide SVG icons, no emojis)."""
 
 from pathlib import Path
 from typing import Optional
@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
 
 from ..database.models import IndexedFileModel
 from ..services.media_parser import MediaType
+from .icons import get_pixmap
 
 
 def format_bytes(size_bytes: int) -> str:
@@ -96,7 +97,7 @@ class MediaCardWidget(QFrame):
         layout.addLayout(meta_layout)
 
     def _generate_thumbnail(self) -> QPixmap:
-        """Render image thumbnail or format badge card."""
+        """Render image thumbnail or format badge card with SVG icon."""
         w, h = 180, 110
         pixmap = QPixmap(w, h)
         pixmap.fill(Qt.transparent)
@@ -104,7 +105,7 @@ class MediaCardWidget(QFrame):
         painter = QPainter(pixmap)
         painter.setRenderHint(QPainter.Antialiasing)
 
-        # Rounded rectangle path
+        # Rounded rectangle clip path
         path = QPainterPath()
         path.addRoundedRect(0, 0, w, h, 6, 6)
         painter.setClipPath(path)
@@ -123,17 +124,38 @@ class MediaCardWidget(QFrame):
         painter.setPen(Qt.NoPen)
         painter.drawRect(0, 0, w, h)
 
-        # Format label (PDF, MP4, ZIP, PNG, etc.)
+        # Determine icon and label
+        mtype = self.file_model.media_type.upper()
         ext = (self.file_model.extension or "").replace(".", "").upper()
         if not ext:
-            ext = self.file_model.media_type[:3].upper()
+            ext = mtype[:3]
 
+        icon_name = "file"
+        if mtype in ("IMAGE", "PHOTO"):
+            icon_name = "image"
+        elif mtype == "VIDEO":
+            icon_name = "video"
+        elif mtype == "AUDIO":
+            icon_name = "audio"
+        elif mtype == "DOCUMENT":
+            icon_name = "file_text"
+        elif ext in ("ZIP", "RAR", "7Z", "TAR", "GZ"):
+            icon_name = "archive"
+
+        # Draw SVG Icon centered
+        icon_pix = get_pixmap(icon_name, color="#229ED9", size=32)
+        if not icon_pix.isNull():
+            ix = (w - 32) // 2
+            iy = (h - 32) // 2 - 12
+            painter.drawPixmap(ix, iy, icon_pix)
+
+        # Format label below icon
         painter.setPen(QColor("#229ED9"))
         font = QFont()
-        font.setPointSize(16)
+        font.setPointSize(12)
         font.setBold(True)
         painter.setFont(font)
-        painter.drawText(QRectF(0, 0, w, h), Qt.AlignCenter, ext)
+        painter.drawText(QRectF(0, h - 36, w, 24), Qt.AlignCenter, ext)
 
         painter.end()
         return pixmap

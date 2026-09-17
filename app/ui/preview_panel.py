@@ -1,9 +1,11 @@
-"""File preview panel and preview modal dialog for PySide6."""
+"""File preview inspector panel and media preview dialog with real playback."""
 
 from pathlib import Path
 from typing import Optional
-from PySide6.QtCore import Qt, Signal, QRectF
-from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPixmap, QBrush
+from PySide6.QtCore import QTime, QUrl, Qt, Signal
+from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPixmap
+from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
+from PySide6.QtMultimediaWidgets import QVideoWidget
 from PySide6.QtWidgets import (
     QDialog,
     QFrame,
@@ -11,6 +13,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QPushButton,
     QScrollArea,
+    QSlider,
     QVBoxLayout,
     QWidget,
 )
@@ -18,6 +21,8 @@ from PySide6.QtWidgets import (
 from ..core.config import settings
 from ..core.logger import get_logger
 from ..database.models import IndexedFileModel
+from .icons import get_icon, get_pixmap
+from .lightbox import ImageLightboxDialog
 from .media_card import format_bytes
 
 logger = get_logger("ui.preview_panel")
@@ -50,7 +55,7 @@ class PreviewPanel(QWidget):
             QFrame {
                 background-color: #1C1C1F;
                 border: 1px solid #27272A;
-                border-radius: 8px;
+                border-radius: 10px;
                 padding: 12px;
             }
             """
@@ -136,11 +141,13 @@ class PreviewPanel(QWidget):
         # Action Buttons
         self.btn_download = QPushButton("Download File")
         self.btn_download.setObjectName("primaryButton")
+        self.btn_download.setIcon(get_icon("download", color="#FFFFFF", size=14))
         self.btn_download.clicked.connect(self._on_download_clicked)
         self.btn_download.setEnabled(False)
         f_layout.addWidget(self.btn_download)
 
-        self.btn_open = QPushButton("Open in System App")
+        self.btn_open = QPushButton("Open File")
+        self.btn_open.setIcon(get_icon("external_link", color="#F4F4F5", size=14))
         self.btn_open.clicked.connect(self._on_open_clicked)
         self.btn_open.setVisible(False)
         f_layout.addWidget(self.btn_open)
@@ -180,7 +187,6 @@ class PreviewPanel(QWidget):
         mb_size = kb_size / 1024.0
         size_str = f"{mb_size:.2f} MB" if mb_size >= 1.0 else f"{kb_size:.1f} KB"
         self.size_label.setText(f"Size: {size_str} ({file_model.file_size:,} bytes)")
-
         date_str = file_model.message_date.strftime("%Y-%m-%d %H:%M:%S") if file_model.message_date else "-"
         self.date_label.setText(f"Date: {date_str}")
         self.chat_label.setText(f"Chat: {file_model.chat_title}")
@@ -197,7 +203,7 @@ class PreviewPanel(QWidget):
         if local_path.exists():
             self.btn_open.setVisible(True)
             self.btn_download.setText("Re-download")
-            self.status_label.setText("Status: Downloaded locally")
+            self.status_label.setText("Status: Downloaded")
             self.status_label.setStyleSheet("color: #22C55E; font-weight: 500;")
         else:
             self.btn_open.setVisible(False)
@@ -205,22 +211,32 @@ class PreviewPanel(QWidget):
             self.status_label.setText("Status: Available on Telegram")
             self.status_label.setStyleSheet("color: #229ED9; font-weight: 500;")
 
-        # Render Thumbnail
+        # Render Thumbnail / Icon
         effective_thumb = thumbnail_path or file_model.thumbnail_path
         if effective_thumb and Path(effective_thumb).exists():
             pix = QPixmap(effective_thumb)
             if not pix.isNull():
-                scaled_pix = pix.scaled(240, 160, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                scaled_pix = pix.scaled(240, 150, Qt.KeepAspectRatio, Qt.SmoothTransformation)
                 self.thumb_label.setPixmap(scaled_pix)
                 self.thumb_label.setText("")
-            else:
-                self._set_placeholder_icon(file_model)
-        else:
-            self._set_placeholder_icon(file_model)
+                return
 
-    def _set_placeholder_icon(self, file_model: IndexedFileModel):
-        self.thumb_label.setPixmap(QPixmap())
-        self.thumb_label.setText(f"[{file_model.media_type}]\n{file_model.extension.upper()}")
+        # Render clean SVG icon fallback
+        icon_name = "file"
+        mtype = file_model.media_type.upper()
+        if mtype in ("IMAGE", "PHOTO"):
+            icon_name = "image"
+        elif mtype == "VIDEO":
+            icon_name = "video"
+        elif mtype == "AUDIO":
+            icon_name = "audio"
+        elif mtype == "DOCUMENT":
+            icon_name = "file_text"
+        elif file_model.extension.lower() in (".zip", ".rar", ".7z", ".tar", ".gz"):
+            icon_name = "archive"
+
+        self.thumb_label.setPixmap(get_pixmap(icon_name, color="#229ED9", size=48))
+        self.thumb_label.setText("")
 
     def _on_download_clicked(self):
         if self.current_file:
@@ -235,17 +251,22 @@ class PreviewPanel(QWidget):
 
 
 class PreviewDialog(QDialog):
-    """Large modal preview window for inspecting images and full media details."""
+    """Media preview modal with real video/audio playback and lightbox integration."""
 
-    download_requested = Signal(object)
+    download_requested = Signal(object) # Emits IndexedFileModel
 
     def __init__(self, file_model: IndexedFileModel, image_path: Optional[str] = None, parent=None):
         super().__init__(parent)
         self.file_model = file_model
         self.image_path = image_path
         self.setWindowTitle(f"Preview: {file_model.filename}")
-        self.resize(760, 620)
-        self.setMinimumSize(520, 420)
+        self.resize(800, 640)
+        self.setMinimumSize(540, 440)
+
+        self._player: Optional[QMediaPlayer] = None
+        self._audio_output: Optional[QAudioOutput] = None
+        self._video_widget: Optional[QVideoWidget] = None
+
         self._init_ui()
 
     def _init_ui(self):
@@ -261,7 +282,7 @@ class PreviewDialog(QDialog):
             QPushButton {
                 background-color: #27272A;
                 border: 1px solid #3F3F46;
-                border-radius: 6px;
+                border-radius: 8px;
                 color: #F4F4F5;
                 padding: 6px 14px;
                 font-size: 13px;
@@ -269,7 +290,7 @@ class PreviewDialog(QDialog):
             }
             QPushButton:hover {
                 background-color: #3F3F46;
-                color: #FFFFFF;
+                border-color: #71717A;
             }
             QPushButton#primaryButton {
                 background-color: #229ED9;
@@ -279,6 +300,21 @@ class PreviewDialog(QDialog):
             }
             QPushButton#primaryButton:hover {
                 background-color: #3AAFE8;
+            }
+            QSlider::groove:horizontal {
+                height: 4px;
+                background: #27272A;
+                border-radius: 2px;
+            }
+            QSlider::sub-page:horizontal {
+                background: #229ED9;
+                border-radius: 2px;
+            }
+            QSlider::handle:horizontal {
+                background: #FFFFFF;
+                width: 12px;
+                margin: -4px 0;
+                border-radius: 6px;
             }
             """
         )
@@ -300,71 +336,230 @@ class PreviewDialog(QDialog):
 
         size_badge = QLabel(format_bytes(self.file_model.file_size))
         size_badge.setStyleSheet(
-            "background-color: #27272A; color: #A1A1AA; border-radius: 4px; padding: 3px 8px; font-size: 12px;"
+            "background-color: #27272A; color: #A1A1AA; border: 1px solid #3F3F46; border-radius: 6px; padding: 3px 8px; font-size: 12px;"
         )
         hdr_row.addWidget(size_badge)
         layout.addLayout(hdr_row)
 
-        # Image view area
+        # Media Canvas
+        mtype = self.file_model.media_type.upper()
+        local_path = settings.download_dir / self.file_model.filename
+        has_local = local_path.exists()
+
+        if mtype == "VIDEO" and has_local:
+            self._setup_video_player(layout, local_path)
+        elif mtype == "AUDIO" and has_local:
+            self._setup_audio_player(layout, local_path)
+        elif mtype in ("IMAGE", "PHOTO"):
+            self._setup_image_preview(layout)
+        else:
+            self._setup_generic_preview(layout, has_local)
+
+        # Caption
+        if self.file_model.caption:
+            cap_lbl = QLabel(f"Caption: {self.file_model.caption}")
+            cap_lbl.setStyleSheet("color: #A1A1AA; font-size: 12px; padding: 4px 0;")
+            cap_lbl.setWordWrap(True)
+            layout.addWidget(cap_lbl)
+
+        # Bottom Actions Bar
+        actions_row = QHBoxLayout()
+        actions_row.setSpacing(10)
+
+        self.btn_download = QPushButton("Download", self)
+        self.btn_download.setObjectName("primaryButton")
+        self.btn_download.setIcon(get_icon("download", color="#FFFFFF", size=14))
+        self.btn_download.clicked.connect(self._on_download)
+        actions_row.addWidget(self.btn_download)
+
+        if has_local:
+            self.btn_open = QPushButton("Open File", self)
+            self.btn_open.setIcon(get_icon("external_link", color="#F4F4F5", size=14))
+            self.btn_open.clicked.connect(self._on_open)
+            actions_row.addWidget(self.btn_open)
+
+        if mtype in ("IMAGE", "PHOTO"):
+            btn_lightbox = QPushButton("Fullscreen Lightbox", self)
+            btn_lightbox.setIcon(get_icon("maximize", color="#F4F4F5", size=14))
+            btn_lightbox.clicked.connect(self._open_lightbox)
+            actions_row.addWidget(btn_lightbox)
+
+        actions_row.addStretch()
+
+        btn_close = QPushButton("Close", self)
+        btn_close.setIcon(get_icon("x", color="#F4F4F5", size=14))
+        btn_close.clicked.connect(self._on_close_dialog)
+        actions_row.addWidget(btn_close)
+
+        layout.addLayout(actions_row)
+
+    def _setup_image_preview(self, parent_layout: QVBoxLayout):
         self.image_label = QLabel()
         self.image_label.setAlignment(Qt.AlignCenter)
-        self.image_label.setStyleSheet(
-            "background-color: #18181B; border: 1px solid #27272A; border-radius: 8px;"
-        )
+        self.image_label.setStyleSheet("background-color: #18181B; border: 1px solid #27272A; border-radius: 8px;")
 
         effective_path = self.image_path or self.file_model.thumbnail_path
         if effective_path and Path(effective_path).exists():
             pix = QPixmap(effective_path)
             if not pix.isNull():
-                self.image_label.setPixmap(pix.scaled(720, 480, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+                self.image_label.setPixmap(pix.scaled(720, 440, Qt.KeepAspectRatio, Qt.SmoothTransformation))
             else:
-                self._render_file_info_placeholder()
+                self._render_placeholder_icon("image")
         else:
-            self._render_file_info_placeholder()
+            self._render_placeholder_icon("image")
 
-        layout.addWidget(self.image_label, stretch=1)
+        parent_layout.addWidget(self.image_label, stretch=1)
 
-        # Caption
-        if self.file_model.caption:
-            cap_lbl = QLabel(self.file_model.caption)
-            cap_lbl.setStyleSheet("color: #A1A1AA; font-size: 12px;")
-            cap_lbl.setWordWrap(True)
-            layout.addWidget(cap_lbl)
+    def _setup_video_player(self, parent_layout: QVBoxLayout, video_path: Path):
+        container = QFrame()
+        container.setStyleSheet("background-color: #000000; border: 1px solid #27272A; border-radius: 8px;")
+        c_layout = QVBoxLayout(container)
+        c_layout.setContentsMargins(0, 0, 0, 0)
+        c_layout.setSpacing(6)
 
-        # Bottom Actions
-        actions_row = QHBoxLayout()
+        self._video_widget = QVideoWidget()
+        c_layout.addWidget(self._video_widget, stretch=1)
 
-        btn_download = QPushButton("Download", self)
-        btn_download.setObjectName("primaryButton")
-        btn_download.clicked.connect(self._on_download)
-        actions_row.addWidget(btn_download)
+        # Controls bar
+        ctrl_bar = QFrame()
+        ctrl_bar.setFixedHeight(40)
+        ctrl_bar.setStyleSheet("background-color: #18181B; padding: 2px 10px;")
+        ctrl_layout = QHBoxLayout(ctrl_bar)
+        ctrl_layout.setContentsMargins(8, 2, 8, 2)
+        ctrl_layout.setSpacing(8)
 
-        local_path = settings.download_dir / self.file_model.filename
-        if local_path.exists():
-            btn_open = QPushButton("Open in App", self)
-            btn_open.clicked.connect(self._on_open)
-            actions_row.addWidget(btn_open)
+        self.btn_play = QPushButton()
+        self.btn_play.setIcon(get_icon("play", color="#F4F4F5", size=14))
+        self.btn_play.setFixedSize(32, 28)
+        self.btn_play.clicked.connect(self._toggle_playback)
+        ctrl_layout.addWidget(self.btn_play)
 
-        actions_row.addStretch()
+        self.seek_slider = QSlider(Qt.Horizontal)
+        self.seek_slider.setRange(0, 1000)
+        self.seek_slider.sliderMoved.connect(self._set_playback_position)
+        ctrl_layout.addWidget(self.seek_slider, stretch=1)
 
-        btn_close = QPushButton("Close", self)
-        btn_close.clicked.connect(self.accept)
-        actions_row.addWidget(btn_close)
+        self.time_label = QLabel("00:00 / 00:00")
+        self.time_label.setStyleSheet("color: #A1A1AA; font-size: 11px;")
+        ctrl_layout.addWidget(self.time_label)
 
-        layout.addLayout(actions_row)
+        c_layout.addWidget(ctrl_bar)
+        parent_layout.addWidget(container, stretch=1)
 
-    def _render_file_info_placeholder(self):
-        info_text = (
-            f"[{self.file_model.media_type}]\n\n"
-            f"Filename: {self.file_model.filename}\n"
-            f"Size: {format_bytes(self.file_model.file_size)} ({self.file_model.file_size:,} bytes)\n"
-            f"Chat: {self.file_model.chat_title}\n"
-            f"Format: {self.file_model.extension} ({self.file_model.mime_type})"
-        )
-        self.image_label.setText(info_text)
-        self.image_label.setStyleSheet(
-            "background-color: #18181B; color: #A1A1AA; font-size: 13px; border: 1px solid #27272A; border-radius: 8px; line-height: 1.6;"
-        )
+        # Initialize Qt Multimedia Player
+        self._player = QMediaPlayer(self)
+        self._audio_output = QAudioOutput(self)
+        self._player.setAudioOutput(self._audio_output)
+        self._player.setVideoOutput(self._video_widget)
+        self._player.positionChanged.connect(self._on_video_position_changed)
+        self._player.durationChanged.connect(self._on_video_duration_changed)
+        self._player.setSource(QUrl.fromLocalFile(str(video_path)))
+
+    def _setup_audio_player(self, parent_layout: QVBoxLayout, audio_path: Path):
+        container = QFrame()
+        container.setStyleSheet("background-color: #18181B; border: 1px solid #27272A; border-radius: 8px; padding: 20px;")
+        c_layout = QVBoxLayout(container)
+        c_layout.setSpacing(14)
+        c_layout.setAlignment(Qt.AlignCenter)
+
+        icon_lbl = QLabel()
+        icon_lbl.setAlignment(Qt.AlignCenter)
+        icon_lbl.setPixmap(get_pixmap("audio", color="#229ED9", size=64))
+        c_layout.addWidget(icon_lbl)
+
+        name_lbl = QLabel(self.file_model.filename)
+        name_lbl.setAlignment(Qt.AlignCenter)
+        name_lbl.setStyleSheet("font-size: 14px; font-weight: 600; color: #F4F4F5;")
+        c_layout.addWidget(name_lbl)
+
+        # Seek row
+        seek_row = QHBoxLayout()
+        seek_row.setSpacing(10)
+
+        self.btn_play = QPushButton()
+        self.btn_play.setIcon(get_icon("play", color="#F4F4F5", size=14))
+        self.btn_play.setFixedSize(36, 32)
+        self.btn_play.clicked.connect(self._toggle_playback)
+        seek_row.addWidget(self.btn_play)
+
+        self.seek_slider = QSlider(Qt.Horizontal)
+        self.seek_slider.setRange(0, 1000)
+        self.seek_slider.sliderMoved.connect(self._set_playback_position)
+        seek_row.addWidget(self.seek_slider, stretch=1)
+
+        self.time_label = QLabel("00:00 / 00:00")
+        self.time_label.setStyleSheet("color: #A1A1AA; font-size: 11px;")
+        seek_row.addWidget(self.time_label)
+
+        c_layout.addLayout(seek_row)
+        parent_layout.addWidget(container, stretch=1)
+
+        self._player = QMediaPlayer(self)
+        self._audio_output = QAudioOutput(self)
+        self._player.setAudioOutput(self._audio_output)
+        self._player.positionChanged.connect(self._on_video_position_changed)
+        self._player.durationChanged.connect(self._on_video_duration_changed)
+        self._player.setSource(QUrl.fromLocalFile(str(audio_path)))
+
+    def _setup_generic_preview(self, parent_layout: QVBoxLayout, has_local: bool):
+        self.image_label = QLabel()
+        self.image_label.setAlignment(Qt.AlignCenter)
+        self.image_label.setStyleSheet("background-color: #18181B; border: 1px solid #27272A; border-radius: 8px; padding: 24px;")
+
+        mtype = self.file_model.media_type.upper()
+        icon_name = "file"
+        if mtype == "VIDEO":
+            icon_name = "video"
+        elif mtype == "AUDIO":
+            icon_name = "audio"
+        elif mtype == "DOCUMENT":
+            icon_name = "file_text"
+        elif self.file_model.extension.lower() in (".zip", ".rar", ".7z"):
+            icon_name = "archive"
+
+        status_text = "Downloaded locally." if has_local else "Available on Telegram.\n\nClick Download to save and open."
+        self.image_label.setPixmap(get_pixmap(icon_name, color="#229ED9", size=64))
+        parent_layout.addWidget(self.image_label, stretch=1)
+
+    def _render_placeholder_icon(self, icon_name: str):
+        self.image_label.setPixmap(get_pixmap(icon_name, color="#229ED9", size=64))
+
+    def _toggle_playback(self):
+        if not self._player:
+            return
+        if self._player.playbackState() == QMediaPlayer.PlayingState:
+            self._player.pause()
+            self.btn_play.setIcon(get_icon("play", color="#F4F4F5", size=14))
+        else:
+            self._player.play()
+            self.btn_play.setIcon(get_icon("pause", color="#F4F4F5", size=14))
+
+    def _set_playback_position(self, value: int):
+        if self._player and self._player.duration() > 0:
+            target_ms = int((value / 1000.0) * self._player.duration())
+            self._player.setPosition(target_ms)
+
+    def _on_video_position_changed(self, pos_ms: int):
+        if self._player and self._player.duration() > 0:
+            pct = int((pos_ms / self._player.duration()) * 1000)
+            self.seek_slider.blockSignals(True)
+            self.seek_slider.setValue(pct)
+            self.seek_slider.blockSignals(False)
+
+            cur_str = QTime(0, 0, 0).addMSecs(pos_ms).toString("mm:ss")
+            dur_str = QTime(0, 0, 0).addMSecs(self._player.duration()).toString("mm:ss")
+            self.time_label.setText(f"{cur_str} / {dur_str}")
+
+    def _on_video_duration_changed(self, dur_ms: int):
+        cur_str = "00:00"
+        dur_str = QTime(0, 0, 0).addMSecs(dur_ms).toString("mm:ss")
+        self.time_label.setText(f"{cur_str} / {dur_str}")
+
+    def _open_lightbox(self):
+        self._stop_player()
+        lightbox = ImageLightboxDialog([self.file_model], parent=self)
+        lightbox.download_requested.connect(self.download_requested.emit)
+        lightbox.exec()
 
     def _on_download(self):
         self.download_requested.emit(self.file_model)
@@ -375,3 +570,14 @@ class PreviewDialog(QDialog):
             from ..services.preview import PreviewService
             PreviewService.open_in_system_viewer(str(local_path))
 
+    def _stop_player(self):
+        if self._player:
+            self._player.stop()
+
+    def _on_close_dialog(self):
+        self._stop_player()
+        self.accept()
+
+    def closeEvent(self, event):
+        self._stop_player()
+        super().closeEvent(event)

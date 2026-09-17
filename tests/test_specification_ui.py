@@ -1,4 +1,4 @@
-"""Comprehensive tests for specification UI components, automatic loading, and zero emoji constraint."""
+"""Comprehensive tests for specification UI components, automatic loading, icons, lightbox, and zero emoji constraint."""
 
 import re
 from datetime import datetime, timezone
@@ -10,6 +10,8 @@ from PySide6.QtCore import Qt
 from app.database.models import IndexedFileModel
 from app.database.repository import DatabaseRepository
 from app.telegram.chats import ChatType, TelegramChat
+from app.ui.icons import get_icon, get_pixmap, SVG_ICONS
+from app.ui.lightbox import ImageLightboxDialog
 from app.ui.media_card import MediaCardWidget, format_bytes
 from app.ui.media_browser import ChatMediaBrowserWidget
 from app.ui.settings_dialog import SettingsDialog
@@ -32,6 +34,37 @@ def sample_file():
         message_date=datetime(2026, 9, 17, 10, 0, tzinfo=timezone.utc),
         caption="Detailed architectural document",
     )
+
+
+@pytest.fixture
+def sample_image_file():
+    return IndexedFileModel(
+        id=2,
+        file_id="spec_102",
+        message_id=15,
+        chat_id=-1001234567890,
+        chat_title="Product Design",
+        filename="mockup.png",
+        extension=".png",
+        mime_type="image/png",
+        file_size=1048576,  # 1 MB
+        media_type="IMAGE",
+        message_date=datetime(2026, 9, 17, 11, 0, tzinfo=timezone.utc),
+    )
+
+
+def test_svg_icon_provider():
+    """Verify SVG icon provider generates non-null pixmaps and icons."""
+    for icon_name in SVG_ICONS.keys():
+        pix = get_pixmap(icon_name, color="#229ED9", size=24)
+        assert pix is not None
+        assert not pix.isNull()
+        assert pix.width() == 24
+        assert pix.height() == 24
+
+        icon = get_icon(icon_name, color="#FFFFFF", size=16)
+        assert icon is not None
+        assert not icon.isNull()
 
 
 def test_media_card_rendering_and_signals(qapp, sample_file):
@@ -62,9 +95,9 @@ def test_media_browser_tab_and_view_switching(qapp, tmp_path, sample_file):
     browser = ChatMediaBrowserWidget(repo=repo)
     browser.show()
 
-    # Select chat
+    # Select chat with 64-bit ID matching sample_file
     chat = TelegramChat(
-        id=-1001234567890,
+        id=sample_file.chat_id,
         title="Product Design",
         chat_type=ChatType.SUPERGROUP,
     )
@@ -90,6 +123,23 @@ def test_media_browser_tab_and_view_switching(qapp, tmp_path, sample_file):
     assert browser.view_stack.currentIndex() == 0
 
 
+def test_image_lightbox_navigation_and_zoom(qapp, sample_image_file):
+    """Verify Image Lightbox dialog displays image and responds to zoom and navigation."""
+    lightbox = ImageLightboxDialog([sample_image_file], current_index=0)
+    lightbox.show()
+
+    assert lightbox.title_label.text() == "mockup.png"
+    assert lightbox.counter_label.text() == "1 of 1"
+
+    # Zoom in / out
+    initial_zoom = lightbox.zoom_factor
+    lightbox._zoom_in()
+    assert lightbox.zoom_factor > initial_zoom
+    lightbox._zoom_out()
+    lightbox._zoom_reset()
+    assert lightbox.zoom_factor == 1.0
+
+
 def test_settings_dialog_tabs(qapp, tmp_path):
     """Verify SettingsDialog tabs and structure."""
     db_file = tmp_path / "settings_test.db"
@@ -100,8 +150,8 @@ def test_settings_dialog_tabs(qapp, tmp_path):
     assert dialog.tabs.count() == 5
     assert dialog.tabs.tabText(0) == "Account"
     assert dialog.tabs.tabText(1) == "Appearance"
-    assert dialog.tabs.tabText(2) == "Storage"
-    assert dialog.tabs.tabText(3) == "Database"
+    assert dialog.tabs.tabText(2) == "Downloads"
+    assert dialog.tabs.tabText(3) == "Storage"
     assert dialog.tabs.tabText(4) == "About"
 
 

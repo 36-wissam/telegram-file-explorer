@@ -33,10 +33,12 @@ from ..telegram.chats import TelegramChat, TelegramChatService
 from ..telegram.client import TelegramClientManager
 from .chat_list import ChatListWidget
 from .download_manager import DownloadManagerDialog
+from .icons import get_icon, get_pixmap
 from .inline_auth import InlineAuthWidget
 from .media_browser import ChatMediaBrowserWidget
 from .preview_panel import PreviewDialog
 from .settings_dialog import SettingsDialog
+from .styles import DARK_THEME, LIGHT_THEME
 
 logger = get_logger("ui.main_window")
 
@@ -53,8 +55,8 @@ class MainWindow(QMainWindow):
     ):
         super().__init__()
         self.setWindowTitle(f"{settings.app_name} v{settings.app_version}")
-        self.setMinimumSize(960, 640)
-        self.resize(1200, 800)
+        self.setMinimumSize(1100, 700)
+        self.resize(1440, 900)
 
         # Initialize core services
         self.client_manager = client_manager or TelegramClientManager(settings)
@@ -148,12 +150,8 @@ class MainWindow(QMainWindow):
         self.action_index_manager = QAction("&Indexing Manager...", self)
         self.action_index_manager.setShortcut(QKeySequence("Ctrl+I"))
         self.action_index_manager.setStatusTip("Scan and index media")
-        self.action_index_manager.triggered.connect(self.open_indexing_manager)
+        self.action_index_manager.triggered.connect(self._on_open_indexing_manager)
         tools_menu.addAction(self.action_index_manager)
-        self.action_logout.setStatusTip("Sign out and remove local session")
-        self.action_logout.triggered.connect(self._on_logout)
-        self.action_logout.setEnabled(False)
-        self.account_menu.addAction(self.action_logout)
 
         # Help Menu
         help_menu = menu_bar.addMenu("&Help")
@@ -171,8 +169,14 @@ class MainWindow(QMainWindow):
         shortcut_f = QShortcut(QKeySequence("Ctrl+F"), self)
         shortcut_f.activated.connect(self._focus_chat_search)
 
+        shortcut_r = QShortcut(QKeySequence("Ctrl+R"), self)
+        shortcut_r.activated.connect(self._on_refresh_all)
+
         shortcut_comma = QShortcut(QKeySequence("Ctrl+,"), self)
         shortcut_comma.activated.connect(self.open_settings_dialog)
+
+        shortcut_j = QShortcut(QKeySequence("Ctrl+J"), self)
+        shortcut_j.activated.connect(self.open_download_manager)
 
     def _init_ui(self):
         """Construct central stacked widget layout with TopBar and Workspaces."""
@@ -326,9 +330,9 @@ class MainWindow(QMainWindow):
             QLineEdit {
                 background-color: #111113;
                 border: 1px solid #27272A;
-                border-radius: 6px;
+                border-radius: 8px;
                 color: #F4F4F5;
-                padding: 5px 12px;
+                padding: 6px 12px;
                 font-size: 12px;
             }
             QLineEdit:focus {
@@ -344,12 +348,16 @@ class MainWindow(QMainWindow):
         # Downloads Button
         self.btn_downloads = QPushButton("Downloads")
         self.btn_downloads.setObjectName("secondaryButton")
+        self.btn_downloads.setIcon(get_icon("download", color="#A1A1AA", size=14))
+        self.btn_downloads.setToolTip("View Downloads (Ctrl+J)")
         self.btn_downloads.clicked.connect(self.open_download_manager)
         layout.addWidget(self.btn_downloads)
 
         # Settings Button
         self.btn_settings = QPushButton("Settings")
         self.btn_settings.setObjectName("secondaryButton")
+        self.btn_settings.setIcon(get_icon("settings", color="#A1A1AA", size=14))
+        self.btn_settings.setToolTip("Open Settings (Ctrl+,)")
         self.btn_settings.clicked.connect(self.open_settings_dialog)
         layout.addWidget(self.btn_settings)
 
@@ -361,6 +369,8 @@ class MainWindow(QMainWindow):
         # Logout / Switch Account Button
         self.btn_logout = QPushButton("Sign Out")
         self.btn_logout.setObjectName("secondaryButton")
+        self.btn_logout.setIcon(get_icon("log_out", color="#A1A1AA", size=14))
+        self.btn_logout.setToolTip("Sign out from Telegram")
         self.btn_logout.clicked.connect(self._on_logout)
         layout.addWidget(self.btn_logout)
 
@@ -480,6 +490,15 @@ class MainWindow(QMainWindow):
             error_callback=on_error,
         )
 
+    def _on_open_indexing_manager(self):
+        """Open indexing manager dialog."""
+        from .indexing_dialog import IndexingDialog
+        from ..services.indexing_manager import IndexingManager
+        im = IndexingManager(self.client_manager, db_path=self.repo.db_path)
+        chats = getattr(self.chat_list_widget, "_all_chats", [])
+        dialog = IndexingDialog(im, available_chats=chats, parent=self)
+        dialog.exec()
+
     def _on_chat_selected(self, chat: TelegramChat):
         """Automatically display chat header, cached files, and progressively stream newer/older media."""
         self.media_browser.set_chat(chat)
@@ -527,7 +546,18 @@ class MainWindow(QMainWindow):
         """Open application settings dialog."""
         dialog = SettingsDialog(self.auth_service, self.repo, parent=self)
         dialog.logout_requested.connect(self._on_logout)
+        dialog.theme_changed.connect(self._apply_theme)
         dialog.exec()
+
+    def _apply_theme(self, theme_name: str):
+        """Switch application stylesheet dynamically."""
+        app = QApplication.instance()
+        if not app:
+            return
+        if theme_name == "light":
+            app.setStyleSheet(LIGHT_THEME)
+        else:
+            app.setStyleSheet(DARK_THEME)
 
     def open_login_dialog(self):
         """Switch to landing page and focus inline authentication card."""
@@ -579,37 +609,22 @@ class MainWindow(QMainWindow):
             self.global_search_input.setFocus()
             self.global_search_input.selectAll()
 
+    def _on_find_files(self):
+        """Focus the media browser search input."""
+        if hasattr(self, "view_stack") and self.view_stack:
+            self.view_stack.setCurrentIndex(1)
+        if hasattr(self, "file_explorer_widget") and self.file_explorer_widget:
+            self.file_explorer_widget.focus_search()
+
     def _focus_chat_search(self):
         """Focus the media browser search input."""
-        if self.central_stack.currentIndex() == 1:
-            self.media_browser.focus_search()
+        self._on_find_files()
 
     def _on_global_search_enter(self):
         """Trigger search across current chat."""
         query = self.global_search_input.text().strip()
         if hasattr(self, "media_browser"):
             self.media_browser.search_input.setText(query)
-
-    def open_indexing_manager(self, preselected_chat_id: Optional[int] = None):
-        """Open indexing dialog."""
-        from .indexing_dialog import IndexingDialog
-        from ..services.indexing_manager import IndexingManager
-        im = IndexingManager(self.client_manager, db_path=self.repo.db_path)
-        chats = getattr(self.chat_list_widget, "_all_chats", [])
-        dialog = IndexingDialog(
-            im,
-            available_chats=chats,
-            preselected_chat_id=preselected_chat_id,
-            parent=self,
-        )
-        dialog.exec()
-
-    def _on_find_files(self):
-        """Focus file search."""
-        if hasattr(self, "view_stack"):
-            self.view_stack.setCurrentIndex(1)
-        if hasattr(self, "file_explorer_widget"):
-            self.file_explorer_widget.focus_search()
 
     def _on_refresh_all(self):
         """Refresh chats, indexed files, and status indicators."""
@@ -655,4 +670,3 @@ class MainWindow(QMainWindow):
             f"About {settings.app_name}",
             about_text,
         )
-

@@ -2,7 +2,7 @@
 
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional, Set
 from PySide6.QtCore import Qt, Signal, QSize, QTimer, QRectF
 from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPixmap, QBrush
 from PySide6.QtWidgets import (
@@ -32,6 +32,7 @@ from ..services.search import SearchEngineService
 from ..telegram.chats import ChatType, TelegramChat
 from .filter_bar import AdvancedFilterCriteria
 from .filter_dialog import FilterDialog
+from .icons import get_icon, get_pixmap
 from .media_card import MediaCardWidget, format_bytes
 
 logger = get_logger("ui.media_browser")
@@ -69,7 +70,7 @@ class ChatMediaBrowserWidget(QWidget):
         self._sort_desc: bool = True
         self._filter_criteria = AdvancedFilterCriteria()
         self._cached_files: List[IndexedFileModel] = []
-        self._is_loading: bool = False
+        self._active_indexing_chats: Set[int] = set()
 
         # Debounce timer for instant search
         self._search_timer = QTimer(self)
@@ -306,11 +307,13 @@ class ChatMediaBrowserWidget(QWidget):
         )
         t_layout = QHBoxLayout(toolbar)
         t_layout.setContentsMargins(24, 6, 24, 6)
-        t_layout.setSpacing(12)
+        t_layout.setSpacing(10)
 
         # View Toggle: Grid / List
         self.btn_grid_view = QPushButton("Grid")
         self.btn_grid_view.setObjectName("secondaryButton")
+        self.btn_grid_view.setIcon(get_icon("grid", color="#A1A1AA", size=14))
+        self.btn_grid_view.setToolTip("Switch to thumbnail grid view")
         self.btn_grid_view.setCheckable(True)
         self.btn_grid_view.setChecked(True)
         self.btn_grid_view.clicked.connect(lambda: self._set_view_mode(0))
@@ -318,6 +321,8 @@ class ChatMediaBrowserWidget(QWidget):
 
         self.btn_list_view = QPushButton("List")
         self.btn_list_view.setObjectName("secondaryButton")
+        self.btn_list_view.setIcon(get_icon("list", color="#A1A1AA", size=14))
+        self.btn_list_view.setToolTip("Switch to detailed list view")
         self.btn_list_view.setCheckable(True)
         self.btn_list_view.setChecked(False)
         self.btn_list_view.clicked.connect(lambda: self._set_view_mode(1))
@@ -326,6 +331,8 @@ class ChatMediaBrowserWidget(QWidget):
         # Filters Button (Opens clean dialog)
         self.btn_filter = QPushButton("Filters")
         self.btn_filter.setObjectName("secondaryButton")
+        self.btn_filter.setIcon(get_icon("sliders_horizontal", color="#A1A1AA", size=14))
+        self.btn_filter.setToolTip("Open advanced filters")
         self.btn_filter.clicked.connect(self._open_filter_dialog)
         t_layout.addWidget(self.btn_filter)
 
@@ -374,7 +381,7 @@ class ChatMediaBrowserWidget(QWidget):
         # 2. Load Local Cached Files Immediately
         self.reload_files()
 
-        # 3. Start Automatic Background Retrieval from Telegram
+        # 3. Start Automatic Background Retrieval from Telegram (Prevent duplicates)
         self._start_automatic_indexing(chat)
 
     def _render_header_avatar(self, chat: TelegramChat) -> QPixmap:
@@ -466,13 +473,12 @@ class ChatMediaBrowserWidget(QWidget):
 
     def _render_grid(self):
         """Populate grid layout with 200px file cards."""
-        # Clear existing items
         while self.grid_layout.count():
             item = self.grid_layout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
 
-        cols = 4  # Responsive column distribution
+        cols = 4
         for i, file_item in enumerate(self._cached_files):
             row = i // cols
             col = i % cols
@@ -515,27 +521,34 @@ class ChatMediaBrowserWidget(QWidget):
             self.table.setItem(row, 4, date_item)
 
     def _start_automatic_indexing(self, chat: TelegramChat):
-        """Progressively retrieve media in background without manual indexing buttons."""
+        """Progressively retrieve media in background without duplicate jobs."""
         if not self.indexer_service:
             return
 
-        self._is_loading = True
+        chat_id = chat.id
+        if chat_id in self._active_indexing_chats:
+            logger.debug("Discovery job already running for chat %s (ID: %d)", chat.display_name, chat_id)
+            return
+
+        self._active_indexing_chats.add(chat_id)
         self.status_label.setText("Loading media…")
 
         def on_batch_discovered(batch):
-            # Safe callback when a batch is parsed
-            self.reload_files()
-            self.status_label.setText(f"Loading older media… ({len(self._cached_files)} files)")
+            if self.current_chat and self.current_chat.id == chat_id:
+                self.reload_files()
+                self.status_label.setText(f"Loading older media… ({len(self._cached_files)} files)")
 
         def on_complete(result):
-            self._is_loading = False
-            self.reload_files()
-            self.status_label.setText("All available media loaded")
+            self._active_indexing_chats.discard(chat_id)
+            if self.current_chat and self.current_chat.id == chat_id:
+                self.reload_files()
+                self.status_label.setText("All available media loaded")
 
         def on_error(exc):
-            self._is_loading = False
-            logger.warning("Auto media loading interrupted: %s", exc)
-            self.status_label.setText("Media load complete")
+            self._active_indexing_chats.discard(chat_id)
+            logger.warning("Auto media loading interrupted for %s: %s", chat.display_name, exc)
+            if self.current_chat and self.current_chat.id == chat_id:
+                self.status_label.setText("Media load complete")
 
         async_runner.run_coroutine_async(
             self.indexer_service.index_chat(

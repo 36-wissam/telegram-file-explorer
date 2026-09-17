@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 from ..core.config import settings
 from ..services.downloader import DownloadManager, DownloadStatus, DownloadTask
 from ..services.preview import PreviewService
+from .icons import get_icon
 
 STATUS_COLORS = {
     DownloadStatus.QUEUED: "#F59E0B",
@@ -65,17 +66,23 @@ class DownloadRowWidget(QWidget):
 
         # Action Buttons
         self.btn_cancel = QPushButton("Cancel")
+        self.btn_cancel.setIcon(get_icon("x", color="#F4F4F5", size=12))
+        self.btn_cancel.setToolTip("Cancel download")
         self.btn_cancel.setStyleSheet("padding: 3px 8px; font-size: 11px; background-color: #27272A; color: #F4F4F5; border-radius: 4px; border: 1px solid #3F3F46;")
         self.btn_cancel.clicked.connect(self._on_cancel)
         top_row.addWidget(self.btn_cancel)
 
         self.btn_retry = QPushButton("Retry")
+        self.btn_retry.setIcon(get_icon("refresh_cw", color="#F4F4F5", size=12))
+        self.btn_retry.setToolTip("Retry download")
         self.btn_retry.setStyleSheet("padding: 3px 8px; font-size: 11px; background-color: #27272A; color: #F4F4F5; border-radius: 4px; border: 1px solid #3F3F46;")
         self.btn_retry.clicked.connect(self._on_retry)
         self.btn_retry.setVisible(False)
         top_row.addWidget(self.btn_retry)
 
         self.btn_open = QPushButton("Open")
+        self.btn_open.setIcon(get_icon("external_link", color="#FFFFFF", size=12))
+        self.btn_open.setToolTip("Open downloaded file")
         self.btn_open.setStyleSheet("padding: 3px 8px; font-size: 11px; background-color: #229ED9; color: #FFFFFF; border-radius: 4px; border: none; font-weight: 500;")
         self.btn_open.clicked.connect(self._on_open)
         self.btn_open.setVisible(False)
@@ -191,7 +198,7 @@ class DownloadManagerDialog(QDialog):
             QPushButton {
                 background-color: #27272A;
                 border: 1px solid #3F3F46;
-                border-radius: 6px;
+                border-radius: 8px;
                 color: #F4F4F5;
                 padding: 6px 14px;
                 font-size: 13px;
@@ -199,7 +206,7 @@ class DownloadManagerDialog(QDialog):
             }
             QPushButton:hover {
                 background-color: #3F3F46;
-                color: #FFFFFF;
+                border-color: #71717A;
             }
             """
         )
@@ -218,7 +225,9 @@ class DownloadManagerDialog(QDialog):
 
         header_row.addStretch()
 
-        btn_open_folder = QPushButton("Open Downloads Folder")
+        btn_open_folder = QPushButton("Open Folder")
+        btn_open_folder.setIcon(get_icon("folder_open", color="#F4F4F5", size=14))
+        btn_open_folder.setToolTip("Open configured downloads directory")
         btn_open_folder.clicked.connect(self._open_downloads_folder)
         header_row.addWidget(btn_open_folder)
 
@@ -249,6 +258,7 @@ class DownloadManagerDialog(QDialog):
         footer.addStretch()
 
         btn_close = QPushButton("Close")
+        btn_close.setIcon(get_icon("x", color="#F4F4F5", size=14))
         btn_close.clicked.connect(self.accept)
         footer.addWidget(btn_close)
 
@@ -290,4 +300,3 @@ class DownloadManagerDialog(QDialog):
     def _open_downloads_folder(self):
         settings.download_dir.mkdir(parents=True, exist_ok=True)
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(settings.download_dir)))
-

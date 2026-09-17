@@ -1,4 +1,4 @@
-"""Chat sidebar list widget conforming strictly to the specification (300px width, 64px rows, no emojis)."""
+"""Chat sidebar list widget conforming strictly to the specification (300px width, 64px rows, Lucide SVG icons, zero emojis)."""
 
 from typing import List, Optional
 from pathlib import Path
@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 
 from ..telegram.chats import ChatType, TelegramChat
 from ..core.logger import get_logger
+from .icons import get_icon, get_pixmap
 
 logger = get_logger("ui.chat_list")
 
@@ -149,7 +150,7 @@ class ChatListItemWidget(QWidget):
 class ChatListWidget(QWidget):
     """300px sidebar widget for chat discovery, filtering, and progressive selection."""
 
-    chat_selected = Signal(object)  # Emits TelegramChat
+    chat_selected = Signal(object)  # Emits TelegramChat (64-bit safe)
     refresh_requested = Signal()
 
     def __init__(self, parent=None):
@@ -181,7 +182,9 @@ class ChatListWidget(QWidget):
 
         self.btn_refresh = QPushButton("Refresh")
         self.btn_refresh.setObjectName("secondaryButton")
-        self.btn_refresh.setStyleSheet("padding: 3px 8px; font-size: 11px;")
+        self.btn_refresh.setIcon(get_icon("refresh_cw", color="#A1A1AA", size=13))
+        self.btn_refresh.setToolTip("Refresh chat list from Telegram")
+        self.btn_refresh.setStyleSheet("padding: 4px 10px; font-size: 11px;")
         self.btn_refresh.clicked.connect(self.refresh_requested.emit)
         header_layout.addWidget(self.btn_refresh)
         layout.addLayout(header_layout)
@@ -189,6 +192,7 @@ class ChatListWidget(QWidget):
         # Search Box
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Search chats...")
+        self.search_input.setClearButtonEnabled(True)
         self.search_input.textChanged.connect(self._apply_filter)
         layout.addWidget(self.search_input)
 
@@ -297,4 +301,3 @@ class ChatListWidget(QWidget):
         if chat:
             logger.info("Selected chat: %s (ID: %d)", chat.display_name, chat.id)
             self.chat_selected.emit(chat)
-
