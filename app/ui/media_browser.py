@@ -4,20 +4,28 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Set
 
-from PySide6.QtCore import Qt, Signal, QSize, QTimer, QRectF, QModelIndex, QItemSelectionModel
-from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPixmap, QBrush
+from PySide6.QtCore import (
+    QModelIndex,
+    QPropertyAnimation,
+    QRectF,
+    QSize,
+    Qt,
+    QTimer,
+    Signal,
+)
+from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPainterPath, QPixmap
 from PySide6.QtWidgets import (
     QComboBox,
     QFrame,
+    QGraphicsOpacityEffect,
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QListView,
     QPushButton,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
-    QListView,
-    QAbstractItemView,
 )
 
 from ..core.async_runner import async_runner
@@ -33,7 +41,14 @@ from ..telegram.chats import ChatType, TelegramChat
 from .filter_bar import AdvancedFilterCriteria
 from .filter_dialog import FilterDialog
 from .icons import get_icon, get_pixmap
-from .fonts import get_font_for_text, get_title_font, get_section_header_font, get_body_font, get_secondary_font, get_caption_font
+from .fonts import (
+    get_font_for_text,
+    get_title_font,
+    get_section_header_font,
+    get_body_font,
+    get_secondary_font,
+    get_caption_font,
+)
 from .media_model import MediaListModel, FileModelRole, FileIdRole
 from .media_delegates import MediaGridDelegate, MediaListDelegate
 from .theme_manager import theme_manager, DARK_TOKENS
@@ -41,7 +56,19 @@ from .media_card import format_bytes, MediaCardWidget
 
 logger = get_logger("ui.media_browser")
 
-MEDIA_TABS = [
+# English default tabs
+TABS_EN = [
+    ("All", None),
+    ("Photos", "IMAGE"),
+    ("Videos", "VIDEO"),
+    ("Files", "DOCUMENT"),
+    ("Audio", "AUDIO"),
+    ("Voice", "VOICE"),
+    ("Links", "OTHER"),
+]
+
+# Arabic tabs
+TABS_AR = [
     ("الكل", None),
     ("صور", "IMAGE"),
     ("فيديو", "VIDEO"),
@@ -114,10 +141,8 @@ class SkeletonCard(QFrame):
                 self._increasing = True
 
         tokens = theme_manager.get_active_tokens()
-        alpha = int(self._opacity * 255)
-        # Pulse between surface-2 and subtle hover
         color = tokens["bg_surface_2"]
-        style = f"background-color: {color}; border-radius: 6px; opacity: {self._opacity:.2f};"
+        style = f"background-color: {color}; border-radius: 6px;"
         self.thumb.setStyleSheet(style)
 
 
@@ -131,7 +156,7 @@ class TableCompat:
 
 
 class ChatMediaBrowserWidget(QWidget):
-    """Virtualized Media Browser using QListView + QStyledItemDelegate strictly matching Screenshots 1-4."""
+    """Virtualized Media Browser using QListView + QStyledItemDelegate strictly matching design specifications."""
 
     file_selected = Signal(object)
     file_double_clicked = Signal(object)
@@ -157,6 +182,7 @@ class ChatMediaBrowserWidget(QWidget):
         self._cached_files: List[IndexedFileModel] = []
         self._active_indexing_chats: Set[int] = set()
         self.preview_service: Optional[PreviewService] = None
+        self._selected_file_id: Optional[str] = None
 
         # Request ID for stale off-thread discard
         self._current_request_id: int = 0
@@ -173,6 +199,7 @@ class ChatMediaBrowserWidget(QWidget):
 
         thumbnail_manager.thumbnail_ready.connect(self._on_thumbnail_decoded)
         theme_manager.theme_changed.connect(self._on_theme_changed)
+        theme_manager.language_changed.connect(self._on_language_changed)
 
         self._init_ui()
 
@@ -186,7 +213,7 @@ class ChatMediaBrowserWidget(QWidget):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
-        # 1. Top Bar strictly conforming to Screenshots 1, 2, 3, 4
+        # 1. Top Bar
         self.top_bar = self._create_top_bar(tokens)
         main_layout.addWidget(self.top_bar)
 
@@ -251,10 +278,10 @@ class ChatMediaBrowserWidget(QWidget):
         self.search_input.hide()
 
     def _create_top_bar(self, tokens: dict) -> QWidget:
-        """Top navigation bar matching Screenshots 1-4:
-        Left: Chat title + file count ('40 ملف')
-        Center: Category filter pills ('الكل', 'صور', 'فيديو', 'ملفات', 'صوت')
-        Right: Grid button (blue active), List button, Sun/Moon theme toggle
+        """Top navigation bar matching design system:
+        Left: Chat title + file count
+        Center: Category filter pills
+        Right: Grid button, List button, Sun/Moon theme toggle
         """
         top_bar = QFrame(self)
         top_bar.setFixedHeight(56)
@@ -280,8 +307,8 @@ class ChatMediaBrowserWidget(QWidget):
         self.title_label.setStyleSheet(f"color: {tokens['text_primary']};")
         info_layout.addWidget(self.title_label)
 
-        self.count_label = QLabel("0 ملف")
-        self.count_label.setFont(get_caption_font("0 ملف"))
+        self.count_label = QLabel("0 files")
+        self.count_label.setFont(get_caption_font("0 files"))
         self.count_label.setStyleSheet(f"color: {tokens['text_tertiary']};")
         info_layout.addWidget(self.count_label)
 
@@ -299,7 +326,9 @@ class ChatMediaBrowserWidget(QWidget):
         pills_layout.setSpacing(6)
 
         self.tab_buttons = []
-        for label, cat_code in MEDIA_TABS:
+        is_ar = theme_manager.get_current_language() == "ar"
+        tabs = TABS_AR if is_ar else TABS_EN
+        for label, cat_code in tabs:
             btn = QPushButton(label)
             btn.setObjectName("filterTabButton")
             btn.setCheckable(True)
@@ -374,6 +403,18 @@ class ChatMediaBrowserWidget(QWidget):
         # Update Theme toggle icon: Moon in dark mode, Sun in light mode
         is_dark = (tokens["bg_base"] == DARK_TOKENS["bg_base"])
         self.btn_theme_toggle.setIcon(get_icon("moon" if is_dark else "sun", color=tokens["text_secondary"], size=18))
+        self.btn_theme_toggle.setStyleSheet(
+            f"""
+            QPushButton {{
+                background-color: transparent;
+                border: 1px solid {tokens['border']};
+                border-radius: 6px;
+            }}
+            QPushButton:hover {{
+                background-color: {tokens['bg_hover']};
+            }}
+            """
+        )
 
     def _toggle_theme(self):
         theme_manager.toggle_theme()
@@ -381,14 +422,55 @@ class ChatMediaBrowserWidget(QWidget):
     def _on_theme_changed(self, tokens: dict):
         self.top_bar.setStyleSheet(f"background-color: {tokens['bg_base']}; border-bottom: 1px solid {tokens['border']};")
         self.empty_icon_label.setPixmap(get_pixmap("folder", color=tokens["text_tertiary"], size=34))
+        self.title_label.setStyleSheet(f"color: {tokens['text_primary']};")
+        self.count_label.setStyleSheet(f"color: {tokens['text_tertiary']};")
+        self.empty_title.setStyleSheet(f"color: {tokens['text_secondary']};")
         self._update_view_toggle_styles(tokens)
+        self.grid_view.viewport().update()
+        self.list_view.viewport().update()
+
+    def _on_language_changed(self, lang: str):
+        is_ar = (lang == "ar")
+        tabs = TABS_AR if is_ar else TABS_EN
+        for i, (label, cat_code) in enumerate(tabs):
+            if i < len(self.tab_buttons):
+                self.tab_buttons[i].setText(label)
+                self.tab_buttons[i].setFont(get_body_font(label))
+
+        if not self.current_chat:
+            self.empty_title.setText("اختر محادثة لعرض الملفات" if is_ar else "Select a chat to view files")
+            self.title_label.setText("اختر محادثة" if is_ar else "Select Chat")
+        self._update_count_label()
+
+    def _update_count_label(self):
+        count = len(self._cached_files)
+        is_ar = theme_manager.get_current_language() == "ar"
+        if is_ar:
+            self.count_label.setText(f"{count} ملف")
+        else:
+            self.count_label.setText(f"{count} {'file' if count == 1 else 'files'}")
 
     def _set_view_mode(self, mode: int):
+        if self.view_stack.currentIndex() == mode:
+            return
         self.btn_grid_view.setChecked(mode == 0)
         self.btn_list_view.setChecked(mode == 1)
         tokens = theme_manager.get_active_tokens()
         self._update_view_toggle_styles(tokens)
+
+        # 150ms cross-fade animation
+        target_widget = self.grid_view if mode == 0 else self.list_view
+        effect = QGraphicsOpacityEffect(target_widget)
+        target_widget.setGraphicsEffect(effect)
+
         self.view_stack.setCurrentIndex(mode)
+
+        anim = QPropertyAnimation(effect, b"opacity")
+        anim.setDuration(150)
+        anim.setStartValue(0.0)
+        anim.setEndValue(1.0)
+        anim.start()
+        self._mode_anim = anim  # keep reference to avoid garbage collection
 
     def set_chat(self, chat: Optional[TelegramChat]):
         self.current_chat = chat
@@ -396,10 +478,12 @@ class ChatMediaBrowserWidget(QWidget):
         req_id = self._current_request_id
         self.grid_delegate.current_request_id = req_id
         self.list_delegate.current_request_id = req_id
+        self.clear_selection()
 
         if not chat:
-            self.title_label.setText("Select Chat")
-            self.count_label.setText("0 ملف")
+            is_ar = theme_manager.get_current_language() == "ar"
+            self.title_label.setText("اختر محادثة" if is_ar else "Select Chat")
+            self._update_count_label()
             self.view_stack.setCurrentIndex(2)
             self.media_model.clear()
             return
@@ -409,17 +493,23 @@ class ChatMediaBrowserWidget(QWidget):
         self.reload_files()
         self._start_automatic_indexing(chat, req_id)
 
+    def clear_selection(self):
+        self._selected_file_id = None
+        self.grid_view.clearSelection()
+        self.list_view.clearSelection()
+
     def _on_tab_clicked(self, category_code: Optional[str], button: QPushButton):
         for btn in self.tab_buttons:
             btn.setChecked(btn is button)
         self._current_category = category_code
+        self.clear_selection()
         self.reload_files()
 
     def reload_files(self):
         if not self.current_chat:
             self.media_model.clear()
             self.view_stack.setCurrentIndex(2)
-            self.count_label.setText("0 ملف")
+            self._update_count_label()
             return
 
         try:
@@ -434,7 +524,7 @@ class ChatMediaBrowserWidget(QWidget):
             files = []
 
         self._cached_files = files
-        self.count_label.setText(f"{len(files)} ملف")
+        self._update_count_label()
 
         if files:
             self.media_model.set_files(files)
@@ -538,7 +628,16 @@ class ChatMediaBrowserWidget(QWidget):
 
     def _on_view_item_clicked(self, index: QModelIndex):
         file_model = index.data(FileModelRole)
-        if file_model:
+        if not file_model:
+            return
+
+        # Single click toggles selection
+        if self._selected_file_id == file_model.file_id:
+            # Same file clicked again: deselect and close preview
+            self.clear_selection()
+            self.file_selected.emit(None)
+        else:
+            self._selected_file_id = file_model.file_id
             self.file_selected.emit(file_model)
 
     def _on_view_item_double_clicked(self, index: QModelIndex):

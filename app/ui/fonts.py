@@ -1,4 +1,4 @@
-"""Typography helper module for Obsidian design system.
+"""Typography helper module for Telegram File Explorer design system.
 Bundles Inter and Cairo fonts, with automatic Arabic/Latin script font selection.
 """
 

@@ -1,7 +1,7 @@
 import os
 from PySide6.QtCore import QObject, QPoint, QRect, QRectF, QSize, Qt, Signal, QEvent
-from PySide6.QtGui import QBrush, QColor, QFont, QFontMetrics, QPainter, QPainterPath, QPixmap, QPen, QMouseEvent
-from PySide6.QtWidgets import QStyledItemDelegate, QStyle, QStyleOptionViewItem, QToolTip, QApplication
+from PySide6.QtGui import QBrush, QColor, QFont, QFontMetrics, QPainter, QPainterPath, QPixmap, QPen
+from PySide6.QtWidgets import QStyledItemDelegate, QStyle, QStyleOptionViewItem
 
 from .theme_manager import theme_manager
 from .icons import get_pixmap, get_icon
@@ -28,6 +28,8 @@ def _get_icon_name_for_type(mtype: str) -> str:
 
 
 class MediaGridDelegate(QStyledItemDelegate):
+    """Grid item delegate with persistent 1px accent border on selection and high-contrast icons."""
+
     download_clicked = Signal(object)
     open_clicked = Signal(object)
 
@@ -48,7 +50,7 @@ class MediaGridDelegate(QStyledItemDelegate):
 
         tokens = theme_manager.get_active_tokens()
         
-        # Draw card background
+        # Determine background and border
         bg_color = QColor(tokens["bg_surface"])
         border_color = QColor(tokens["border"])
         border_width = 1
@@ -56,7 +58,7 @@ class MediaGridDelegate(QStyledItemDelegate):
         if is_selected:
             bg_color = QColor(tokens["bg_surface_2"])
             border_color = QColor(tokens["accent"])
-            border_width = 2
+            border_width = 1  # Persistent 1px accent border per specification
         elif is_hovered:
             bg_color = QColor(tokens["bg_hover"])
 
@@ -93,7 +95,9 @@ class MediaGridDelegate(QStyledItemDelegate):
         else:
             painter.fillRect(thumb_rect, QColor(tokens["bg_surface_2"]))
             icon_name = _get_icon_name_for_type(mtype)
-            icon_pixmap = get_pixmap(icon_name, color=tokens["text_secondary"], size=34)
+            # High-contrast icon color (text_secondary provides strong contrast in both dark and light modes)
+            icon_color = tokens["text_secondary"]
+            icon_pixmap = get_pixmap(icon_name, color=icon_color, size=34)
             if not icon_pixmap.isNull():
                 ix = thumb_rect.center().x() - icon_pixmap.width() // 2
                 iy = thumb_rect.center().y() - icon_pixmap.height() // 2
@@ -123,55 +127,12 @@ class MediaGridDelegate(QStyledItemDelegate):
         painter.setPen(QColor(tokens["text_tertiary"]))
         painter.drawText(size_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop, size_str)
 
-        # Hover actions (Download and Open buttons)
-        if is_hovered:
-            btn_size = 28
-            margin = 8
-            
-            open_rect = QRect(rect.right() - btn_size - margin, rect.top() + margin, btn_size, btn_size)
-            download_rect = QRect(open_rect.left() - btn_size - 4, rect.top() + margin, btn_size, btn_size)
-            
-            btn_bg = QColor(0, 0, 0, 160)
-            painter.setBrush(QBrush(btn_bg))
-            painter.setPen(Qt.PenStyle.NoPen)
-            
-            painter.drawRoundedRect(open_rect, 6, 6)
-            painter.drawRoundedRect(download_rect, 6, 6)
-            
-            open_pixmap = get_pixmap("external_link", color="#FFFFFF", size=16)
-            if not open_pixmap.isNull():
-                painter.drawPixmap(open_rect.center().x() - 8, open_rect.center().y() - 8, open_pixmap)
-                
-            download_pixmap = get_pixmap("download", color="#FFFFFF", size=16)
-            if not download_pixmap.isNull():
-                painter.drawPixmap(download_rect.center().x() - 8, download_rect.center().y() - 8, download_pixmap)
-
         painter.restore()
-
-    def get_button_rects(self, option: QStyleOptionViewItem):
-        rect = option.rect.adjusted(4, 4, -4, -4)
-        btn_size = 28
-        margin = 8
-        open_rect = QRect(rect.right() - btn_size - margin, rect.top() + margin, btn_size, btn_size)
-        download_rect = QRect(open_rect.left() - btn_size - 4, rect.top() + margin, btn_size, btn_size)
-        return download_rect, open_rect
-
-    def editorEvent(self, event, model, option, index):
-        if event.type() == QEvent.Type.MouseButtonRelease and event.button() == Qt.MouseButton.LeftButton:
-            download_rect, open_rect = self.get_button_rects(option)
-            file_model = index.data(FileModelRole)
-            
-            if download_rect.contains(event.position().toPoint()):
-                self.download_clicked.emit(file_model)
-                return True
-            elif open_rect.contains(event.position().toPoint()):
-                self.open_clicked.emit(file_model)
-                return True
-                
-        return super().editorEvent(event, model, option, index)
 
 
 class MediaListDelegate(QStyledItemDelegate):
+    """List item delegate with persistent 1px accent highlight on selection."""
+
     download_clicked = Signal(object)
     open_clicked = Signal(object)
 
@@ -194,6 +155,9 @@ class MediaListDelegate(QStyledItemDelegate):
         
         if is_selected:
             painter.fillRect(rect, QColor(tokens["bg_surface_2"]))
+            pen = QPen(QColor(tokens["accent"]), 1)
+            painter.setPen(pen)
+            painter.drawRect(rect.adjusted(0, 0, -1, -1))
         elif is_hovered:
             painter.fillRect(rect, QColor(tokens["bg_hover"]))
 

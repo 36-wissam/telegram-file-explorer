@@ -1,5 +1,6 @@
 """Main application window for Telegram File Explorer conforming to design specifications."""
 
+import sys
 from pathlib import Path
 from typing import List, Optional
 from PySide6.QtCore import Qt, QTimer, QKeyCombination
@@ -39,7 +40,7 @@ from .media_browser import ChatMediaBrowserWidget
 from .preview_panel import PreviewDialog, PreviewPanel
 from .settings_dialog import SettingsDialog
 from .settings_panel import SettingsPanel
-from .theme_manager import theme_manager
+from .theme_manager import theme_manager, DARK_TOKENS, LIGHT_TOKENS
 from .styles import DARK_THEME, LIGHT_THEME
 
 logger = get_logger("ui.main_window")
@@ -73,16 +74,18 @@ class MainWindow(QMainWindow):
         self._init_status_bar()
         self._setup_shortcuts()
 
+        theme_manager.theme_changed.connect(self._on_theme_changed)
+
         # Check session state on start
         QTimer.singleShot(100, self._check_initial_auth_state)
 
         logger.info("MainWindow initialized successfully.")
 
     def _init_menu_bar(self):
-        """Build top menu bar without emojis."""
+        """Build actions and shortcuts, then detach native menu bar from view."""
         menu_bar = self.menuBar()
 
-        # File Menu
+        # File Menu Actions
         file_menu = menu_bar.addMenu("&File")
 
         self.action_downloads = QAction("&Downloads...", self)
@@ -106,7 +109,7 @@ class MainWindow(QMainWindow):
         exit_action.triggered.connect(self.close)
         file_menu.addAction(exit_action)
 
-        # Edit Menu
+        # Edit Menu Actions
         edit_menu = menu_bar.addMenu("&Edit")
 
         self.action_find_files = QAction("&Find Files...", self)
@@ -127,7 +130,7 @@ class MainWindow(QMainWindow):
         self.action_refresh_all.triggered.connect(self._on_refresh_all)
         edit_menu.addAction(self.action_refresh_all)
 
-        # Account Menu
+        # Account Menu Actions
         self.account_menu = menu_bar.addMenu("&Account")
 
         self.action_login = QAction("Sign &In...", self)
@@ -147,7 +150,7 @@ class MainWindow(QMainWindow):
         self.action_logout.setEnabled(False)
         self.account_menu.addAction(self.action_logout)
 
-        # Tools Menu
+        # Tools Menu Actions
         tools_menu = menu_bar.addMenu("&Tools")
         self.action_index_manager = QAction("&Indexing Manager...", self)
         self.action_index_manager.setShortcut(QKeySequence("Ctrl+I"))
@@ -155,13 +158,16 @@ class MainWindow(QMainWindow):
         self.action_index_manager.triggered.connect(self._on_open_indexing_manager)
         tools_menu.addAction(self.action_index_manager)
 
-        # Help Menu
+        # Help Menu Actions
         help_menu = menu_bar.addMenu("&Help")
         about_action = QAction("&About Telegram File Explorer", self)
         about_action.setShortcut(QKeySequence("F1"))
         about_action.setStatusTip("View application info and version")
         about_action.triggered.connect(self._show_about)
         help_menu.addAction(about_action)
+
+        # Detach native OS menu bar from view per specification
+        self.setMenuBar(None)
 
     def _setup_shortcuts(self):
         """Configure keyboard accelerators."""
@@ -175,7 +181,7 @@ class MainWindow(QMainWindow):
         shortcut_r.activated.connect(self._on_refresh_all)
 
         shortcut_comma = QShortcut(QKeySequence("Ctrl+,"), self)
-        shortcut_comma.activated.connect(self.open_settings_dialog)
+        shortcut_comma.activated.connect(self._toggle_settings_panel)
 
         shortcut_j = QShortcut(QKeySequence("Ctrl+J"), self)
         shortcut_j.activated.connect(self.open_download_manager)
@@ -184,7 +190,7 @@ class MainWindow(QMainWindow):
         shortcut_p.activated.connect(self._toggle_preview_panel)
 
         shortcut_esc = QShortcut(QKeySequence("Esc"), self)
-        shortcut_esc.activated.connect(self._hide_preview_panel)
+        shortcut_esc.activated.connect(self._on_escape_pressed)
 
     def _init_ui(self):
         """Construct central stacked widget layout with TopBar and Workspaces."""
@@ -200,9 +206,10 @@ class MainWindow(QMainWindow):
         self.central_stack.addWidget(self.workspace_page)
 
     def _create_welcome_page(self) -> QWidget:
-        """Create clean welcome / sign-in screen without emojis."""
+        """Create clean welcome / sign-in screen."""
+        tokens = theme_manager.get_active_tokens()
         page = QWidget()
-        page.setStyleSheet("background-color: #111113;")
+        page.setStyleSheet(f"background-color: {tokens['bg_base']};")
         layout = QVBoxLayout(page)
         layout.setContentsMargins(32, 24, 32, 24)
         layout.setSpacing(16)
@@ -210,13 +217,13 @@ class MainWindow(QMainWindow):
         self.card = QFrame(page)
         self.card.setMaximumWidth(560)
         self.card.setStyleSheet(
-            """
-            QFrame {
-                background-color: #18181B;
-                border: 1px solid #27272A;
+            f"""
+            QFrame {{
+                background-color: {tokens['bg_surface']};
+                border: 1px solid {tokens['border']};
                 border-radius: 12px;
                 padding: 24px;
-            }
+            }}
             """
         )
         card_layout = QVBoxLayout(self.card)
@@ -224,12 +231,10 @@ class MainWindow(QMainWindow):
         card_layout.setAlignment(Qt.AlignCenter)
 
         title_label = QLabel(settings.app_name)
-        title_font = QFont()
-        title_font.setPointSize(22)
-        title_font.setBold(True)
+        title_font = QFont("Inter", 20, QFont.Bold)
         title_label.setFont(title_font)
         title_label.setAlignment(Qt.AlignCenter)
-        title_label.setStyleSheet("color: #FFFFFF;")
+        title_label.setStyleSheet(f"color: {tokens['text_primary']};")
         card_layout.addWidget(title_label)
 
         # Embedded Inline Authentication Widget
@@ -243,9 +248,10 @@ class MainWindow(QMainWindow):
         return page
 
     def _create_workspace_page(self) -> QWidget:
-        """Create the primary workspace with Top Bar, 300px Chat List sidebar, and Media Browser."""
+        """Create the primary workspace: Left Sidebar | Media Browser (stretch) | Right Dock Panels (320px)."""
+        tokens = theme_manager.get_active_tokens()
         page = QWidget()
-        page.setStyleSheet("background-color: #111113;")
+        page.setStyleSheet(f"background-color: {tokens['bg_base']};")
         page_layout = QVBoxLayout(page)
         page_layout.setContentsMargins(0, 0, 0, 0)
         page_layout.setSpacing(0)
@@ -255,19 +261,11 @@ class MainWindow(QMainWindow):
         self.top_bar.hide()
         page_layout.addWidget(self.top_bar)
 
-        # 1. Slide-in Settings Panel (Docked on left, width 320px, Screenshot 4)
-        self.settings_panel = SettingsPanel(repo=self.repo, parent=self)
-        self.settings_panel.close_requested.connect(self._hide_settings_panel)
-        self.settings_panel.hide()
-
         # 2. Main Horizontal Splitter
         self.main_splitter = QSplitter(Qt.Horizontal)
-        tokens = theme_manager.get_active_tokens()
         self.main_splitter.setStyleSheet(f"QSplitter::handle {{ background-color: {tokens['border']}; width: 1px; }}")
 
-        self.main_splitter.addWidget(self.settings_panel)
-
-        # Sidebar: Chat List Widget (Screenshots 1-3)
+        # Index 0 (Left Edge): Sidebar - Chat List Widget (280px expanded / 72px rail)
         self.chat_list_widget = ChatListWidget()
         self.chat_list_widget.chat_selected.connect(self._on_chat_selected)
         self.chat_list_widget.refresh_requested.connect(self.refresh_chats)
@@ -275,7 +273,7 @@ class MainWindow(QMainWindow):
         self.chat_list_widget.collapsed_changed.connect(self._on_chat_sidebar_collapsed)
         self.main_splitter.addWidget(self.chat_list_widget)
 
-        # Main Content: Chat Media Browser Widget
+        # Index 1 (Center): Main Content - Chat Media Browser Widget (stretch)
         self.media_browser = ChatMediaBrowserWidget(
             repo=self.repo,
             indexer_service=self.indexer_service,
@@ -288,34 +286,45 @@ class MainWindow(QMainWindow):
         self.media_browser.set_client_manager(self.client_manager)
         self.main_splitter.addWidget(self.media_browser)
 
+        # Index 2 (Right Edge): Preview Panel (320px, initially hidden)
         self.preview_panel = PreviewPanel()
         self.preview_panel.download_requested.connect(self._on_download_file)
         self.preview_panel.close_requested.connect(self._hide_preview_panel)
+        self.preview_panel.hide()
         self.main_splitter.addWidget(self.preview_panel)
+
+        # Index 3 (Right Edge): Settings Panel (320px, initially hidden)
+        self.settings_panel = SettingsPanel(repo=self.repo, parent=self)
+        self.settings_panel.close_requested.connect(self._hide_settings_panel)
+        self.settings_panel.logout_requested.connect(self._on_logout)
+        self.settings_panel.hide()
+        self.main_splitter.addWidget(self.settings_panel)
 
         self.file_explorer_widget = self.media_browser
         self.view_stack = self.media_browser.view_stack
 
-        self.main_splitter.setSizes([0, 280, 800, 0])
+        # Initial layout: Sidebar=280px, Browser=fill, Preview=0, Settings=0
+        self.main_splitter.setSizes([280, 1160, 0, 0])
         self.main_splitter.setStretchFactor(0, 0)
-        self.main_splitter.setStretchFactor(1, 0)
-        self.main_splitter.setStretchFactor(2, 1)
+        self.main_splitter.setStretchFactor(1, 1)
+        self.main_splitter.setStretchFactor(2, 0)
         self.main_splitter.setStretchFactor(3, 0)
 
         page_layout.addWidget(self.main_splitter)
         return page
 
     def _create_top_bar(self) -> QWidget:
-        """Create modern top navigation bar matching the design system."""
+        """Create top bar header matching the design system."""
+        tokens = theme_manager.get_active_tokens()
         top_bar = QFrame(self)
         top_bar.setFixedHeight(54)
         top_bar.setStyleSheet(
-            """
-            QFrame {
-                background-color: #18181B;
-                border-bottom: 1px solid #27272A;
+            f"""
+            QFrame {{
+                background-color: {tokens['bg_surface']};
+                border-bottom: 1px solid {tokens['border']};
                 padding: 4px 16px;
-            }
+            }}
             """
         )
         layout = QHBoxLayout(top_bar)
@@ -324,11 +333,9 @@ class MainWindow(QMainWindow):
 
         # App Title / Brand
         brand_label = QLabel(settings.app_name)
-        brand_font = QFont()
-        brand_font.setPointSize(13)
-        brand_font.setBold(True)
+        brand_font = QFont("Inter", 13, QFont.Bold)
         brand_label.setFont(brand_font)
-        brand_label.setStyleSheet("color: #FFFFFF;")
+        brand_label.setStyleSheet(f"color: {tokens['text_primary']};")
         layout.addWidget(brand_label)
 
         layout.addSpacing(16)
@@ -339,18 +346,18 @@ class MainWindow(QMainWindow):
         self.global_search_input.setClearButtonEnabled(True)
         self.global_search_input.setFixedWidth(340)
         self.global_search_input.setStyleSheet(
-            """
-            QLineEdit {
-                background-color: #111113;
-                border: 1px solid #27272A;
+            f"""
+            QLineEdit {{
+                background-color: {tokens['bg_surface_2']};
+                border: 1px solid {tokens['border']};
                 border-radius: 8px;
-                color: #F4F4F5;
+                color: {tokens['text_primary']};
                 padding: 6px 12px;
                 font-size: 12px;
-            }
-            QLineEdit:focus {
-                border-color: #229ED9;
-            }
+            }}
+            QLineEdit:focus {{
+                border-color: {tokens['accent']};
+            }}
             """
         )
         self.global_search_input.returnPressed.connect(self._on_global_search_enter)
@@ -361,7 +368,7 @@ class MainWindow(QMainWindow):
         # Downloads Button
         self.btn_downloads = QPushButton("Downloads")
         self.btn_downloads.setObjectName("secondaryButton")
-        self.btn_downloads.setIcon(get_icon("download", color="#A1A1AA", size=14))
+        self.btn_downloads.setIcon(get_icon("download", color=tokens["text_secondary"], size=14))
         self.btn_downloads.setToolTip("View Downloads (Ctrl+J)")
         self.btn_downloads.clicked.connect(self.open_download_manager)
         layout.addWidget(self.btn_downloads)
@@ -369,7 +376,7 @@ class MainWindow(QMainWindow):
         # Settings Button
         self.btn_settings = QPushButton("Settings")
         self.btn_settings.setObjectName("secondaryButton")
-        self.btn_settings.setIcon(get_icon("settings", color="#A1A1AA", size=14))
+        self.btn_settings.setIcon(get_icon("settings", color=tokens["text_secondary"], size=14))
         self.btn_settings.setToolTip("Open Settings (Ctrl+,)")
         self.btn_settings.clicked.connect(self._toggle_settings_panel)
         layout.addWidget(self.btn_settings)
@@ -377,37 +384,76 @@ class MainWindow(QMainWindow):
         # Toggle Preview Button
         self.btn_toggle_preview = QPushButton()
         self.btn_toggle_preview.setObjectName("secondaryButton")
-        self.btn_toggle_preview.setIcon(get_icon("panel_right", color="#A1A1AA", size=14))
+        self.btn_toggle_preview.setIcon(get_icon("panel_right", color=tokens["text_secondary"], size=14))
         self.btn_toggle_preview.setToolTip("Toggle Inspector Panel")
         self.btn_toggle_preview.clicked.connect(self._toggle_preview_panel)
         layout.addWidget(self.btn_toggle_preview)
 
         # User Profile Label
         self.lbl_user_name = QLabel("")
-        self.lbl_user_name.setStyleSheet("color: #229ED9; font-weight: 500; font-size: 12px; padding: 0 4px;")
+        self.lbl_user_name.setStyleSheet(f"color: {tokens['accent']}; font-weight: 500; font-size: 12px; padding: 0 4px;")
         layout.addWidget(self.lbl_user_name)
 
         return top_bar
 
     def _init_status_bar(self):
-        """Set up bottom status bar without unicode emojis."""
+        """Set up bottom status bar."""
+        tokens = theme_manager.get_active_tokens()
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
 
         self.status_files_indicator = QLabel("0 files indexed")
         self.status_files_indicator.setStyleSheet(
-            "color: #A1A1AA; font-size: 11px; padding: 0 10px; font-weight: 500;"
+            f"color: {tokens['text_secondary']}; font-size: 11px; padding: 0 10px; font-weight: 500;"
         )
         self.status_bar.addPermanentWidget(self.status_files_indicator)
 
         self.status_auth_indicator = QLabel("Not Signed In")
         self.status_auth_indicator.setStyleSheet(
-            "color: #EF4444; font-size: 11px; padding: 0 10px; font-weight: 500;"
+            f"color: {tokens['danger']}; font-size: 11px; padding: 0 10px; font-weight: 500;"
         )
         self.status_bar.addPermanentWidget(self.status_auth_indicator)
 
         self.status_bar.showMessage("Ready.")
         self._update_status_files_indicator()
+
+    def _on_theme_changed(self, tokens: dict):
+        """Update window canvas backgrounds dynamically on theme switch."""
+        self.workspace_page.setStyleSheet(f"background-color: {tokens['bg_base']};")
+        self.welcome_page.setStyleSheet(f"background-color: {tokens['bg_base']};")
+        self.card.setStyleSheet(
+            f"""
+            QFrame {{
+                background-color: {tokens['bg_surface']};
+                border: 1px solid {tokens['border']};
+                border-radius: 12px;
+                padding: 24px;
+            }}
+            """
+        )
+        self.main_splitter.setStyleSheet(f"QSplitter::handle {{ background-color: {tokens['border']}; width: 1px; }}")
+        self.status_files_indicator.setStyleSheet(
+            f"color: {tokens['text_secondary']}; font-size: 11px; padding: 0 10px; font-weight: 500;"
+        )
+        self._update_window_title_bar()
+
+    def _update_window_title_bar(self):
+        """Enable Windows 10/11 immersive dark mode on title bar."""
+        if sys.platform == "win32":
+            try:
+                import ctypes
+                hwnd = int(self.winId())
+                DWMWA_USE_IMMERSIVE_DARK_MODE = 20
+                is_dark = (theme_manager.get_active_tokens()["bg_base"] == DARK_TOKENS["bg_base"])
+                val = ctypes.c_int(1 if is_dark else 0)
+                ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                    hwnd,
+                    DWMWA_USE_IMMERSIVE_DARK_MODE,
+                    ctypes.byref(val),
+                    ctypes.sizeof(val),
+                )
+            except Exception:
+                pass
 
     def _update_status_files_indicator(self):
         """Update file count in status bar."""
@@ -438,6 +484,7 @@ class MainWindow(QMainWindow):
 
     def update_auth_ui(self):
         """Refresh UI based on authentication state."""
+        tokens = theme_manager.get_active_tokens()
         state = self.auth_service.state
         if state == AuthState.AUTHORIZED and self.auth_service.current_user:
             user = self.auth_service.current_user
@@ -451,11 +498,14 @@ class MainWindow(QMainWindow):
 
             self.status_auth_indicator.setText(f"Connected: {name}")
             self.status_auth_indicator.setStyleSheet(
-                "color: #22C55E; font-size: 11px; padding: 0 10px; font-weight: 500;"
+                f"color: {tokens['success']}; font-size: 11px; padding: 0 10px; font-weight: 500;"
             )
 
             self.central_stack.setCurrentIndex(1)
             self.status_bar.showMessage(f"Connected to Telegram as {name} {username}")
+
+            if hasattr(self, "settings_panel"):
+                self.settings_panel.set_user_info(name, user.get("username", ""))
 
         else:
             self.lbl_user_name.setText("")
@@ -467,13 +517,13 @@ class MainWindow(QMainWindow):
             if state == AuthState.NOT_CONFIGURED:
                 self.status_auth_indicator.setText("API Not Configured")
                 self.status_auth_indicator.setStyleSheet(
-                    "color: #F59E0B; font-size: 11px; padding: 0 10px; font-weight: 500;"
+                    f"color: {tokens['warning']}; font-size: 11px; padding: 0 10px; font-weight: 500;"
                 )
                 self.status_bar.showMessage("Telegram API credentials required.")
             else:
                 self.status_auth_indicator.setText("Not Signed In")
                 self.status_auth_indicator.setStyleSheet(
-                    "color: #EF4444; font-size: 11px; padding: 0 10px; font-weight: 500;"
+                    f"color: {tokens['danger']}; font-size: 11px; padding: 0 10px; font-weight: 500;"
                 )
                 self.status_bar.showMessage("Ready to sign in.")
 
@@ -517,48 +567,83 @@ class MainWindow(QMainWindow):
         self.media_browser.set_chat(chat)
         self.status_bar.showMessage(f"Viewing media in {chat.display_name}")
 
-
     def _toggle_settings_panel(self):
+        """Toggle right-docked Settings panel (pushes content, does not cover sidebar)."""
         if self.settings_panel.isVisible():
-            self.settings_panel.hide()
+            self._hide_settings_panel()
         else:
+            self._hide_preview_panel()
             self.settings_panel.show()
             self.settings_panel.setFixedWidth(320)
             sizes = self.main_splitter.sizes()
-            if len(sizes) >= 4:
-                sizes[0] = 320
-                self.main_splitter.setSizes(sizes)
+            sidebar_w = sizes[0] if sizes else 280
+            total_w = sum(sizes)
+            self.main_splitter.setSizes([sidebar_w, max(400, total_w - sidebar_w - 320), 0, 320])
 
     def _hide_settings_panel(self):
+        """Hide right-docked Settings panel and restore browser width."""
         self.settings_panel.hide()
+        sizes = self.main_splitter.sizes()
+        sidebar_w = sizes[0] if sizes else 280
+        total_w = sum(sizes)
+        self.main_splitter.setSizes([sidebar_w, total_w - sidebar_w, 0, 0])
 
     def _on_chat_sidebar_collapsed(self, collapsed: bool):
+        """Handle sidebar width collapse/expand."""
+        sidebar_w = 72 if collapsed else 280
         sizes = self.main_splitter.sizes()
         if len(sizes) >= 4:
-            sizes[1] = 72 if collapsed else 280
-            self.main_splitter.setSizes(sizes)
+            right_p = sizes[2]
+            right_s = sizes[3]
+            total_w = sum(sizes)
+            content_w = max(300, total_w - sidebar_w - right_p - right_s)
+            self.main_splitter.setSizes([sidebar_w, content_w, right_p, right_s])
 
-    def _on_file_selected(self, file_model: IndexedFileModel):
-        """Handle single-click selection on media file."""
+    def _on_file_selected(self, file_model: Optional[IndexedFileModel]):
+        """Handle single-click selection on media file (opens persistent 320px right dock)."""
+        if not file_model:
+            self._hide_preview_panel()
+            return
+
         self.status_bar.showMessage(f"Selected: {file_model.filename} ({file_model.media_type})")
-        if hasattr(self, 'preview_panel'):
-            self.preview_panel.set_file(file_model)
-            # Show panel if hidden
-            sizes = self.main_splitter.sizes()
-            if sizes[2] == 0:
-                self.main_splitter.setSizes([280, sizes[1] - 320, 320])
+        self._hide_settings_panel()
+        self.preview_panel.set_file(file_model)
+        self.preview_panel.show()
+        self.preview_panel.setFixedWidth(320)
+        sizes = self.main_splitter.sizes()
+        sidebar_w = sizes[0] if sizes else 280
+        total_w = sum(sizes)
+        self.main_splitter.setSizes([sidebar_w, max(400, total_w - sidebar_w - 320), 320, 0])
 
     def _toggle_preview_panel(self):
-        sizes = self.main_splitter.sizes()
-        if sizes[2] == 0:
-            self.main_splitter.setSizes([280, sizes[1] - 320, 320])
+        """Toggle right-docked preview inspector panel."""
+        if self.preview_panel.isVisible():
+            self._hide_preview_panel()
+            if hasattr(self, "media_browser"):
+                self.media_browser.clear_selection()
         else:
-            self.main_splitter.setSizes([280, sizes[1] + sizes[2], 0])
+            self._hide_settings_panel()
+            self.preview_panel.show()
+            self.preview_panel.setFixedWidth(320)
+            sizes = self.main_splitter.sizes()
+            sidebar_w = sizes[0] if sizes else 280
+            total_w = sum(sizes)
+            self.main_splitter.setSizes([sidebar_w, max(400, total_w - sidebar_w - 320), 320, 0])
 
     def _hide_preview_panel(self):
+        """Hide right-docked preview panel and restore browser width."""
+        self.preview_panel.hide()
         sizes = self.main_splitter.sizes()
-        if sizes[2] > 0:
-            self.main_splitter.setSizes([280, sizes[1] + sizes[2], 0])
+        sidebar_w = sizes[0] if sizes else 280
+        total_w = sum(sizes)
+        self.main_splitter.setSizes([sidebar_w, total_w - sidebar_w, 0, 0])
+
+    def _on_escape_pressed(self):
+        """Esc key closes whichever right panel is active and clears selection."""
+        self._hide_preview_panel()
+        self._hide_settings_panel()
+        if hasattr(self, "media_browser"):
+            self.media_browser.clear_selection()
 
     def _on_file_double_clicked(self, file_model: IndexedFileModel):
         """Open detailed media preview dialog on double click."""
@@ -595,11 +680,8 @@ class MainWindow(QMainWindow):
         dialog.exec()
 
     def open_settings_dialog(self):
-        """Open application settings dialog."""
-        dialog = SettingsDialog(self.auth_service, self.repo, parent=self)
-        dialog.logout_requested.connect(self._on_logout)
-        dialog.theme_changed.connect(self._apply_theme)
-        dialog.exec()
+        """Open right-docked settings panel."""
+        self._toggle_settings_panel()
 
     def _on_open_file(self, file_model: IndexedFileModel):
         """Open downloaded file in system viewer, or launch preview dialog if not yet downloaded."""
@@ -611,8 +693,7 @@ class MainWindow(QMainWindow):
             self._on_file_double_clicked(file_model)
 
     def _apply_theme(self, theme_name: str):
-        """Switch application stylesheet dynamically using Obsidian ThemeManager."""
-        from .theme_manager import theme_manager
+        """Switch application stylesheet dynamically using ThemeManager."""
         theme_manager.set_theme(theme_name)
 
     def open_login_dialog(self):

@@ -26,10 +26,10 @@ LIGHT_TOKENS = {
     "bg_surface": "#FFFFFF",
     "bg_surface_2": "#F0F1F4",
     "bg_hover": "#E9EBEF",
-    "border": "#E1E3E8",
-    "text_primary": "#1A1D21",
-    "text_secondary": "#5B616B",
-    "text_tertiary": "#8A909B",
+    "border": "#D1D5DB",
+    "text_primary": "#111827",
+    "text_secondary": "#4B5563",
+    "text_tertiary": "#6B7280",
     "accent": "#3D6FE0",
     "accent_hover": "#2F5BC4",
     "accent_muted": "rgba(61,111,224,0.10)",
@@ -41,11 +41,25 @@ LIGHT_TOKENS = {
 
 class ThemeManager(QObject):
     theme_changed = Signal(dict)
+    language_changed = Signal(str)
 
     def __init__(self):
         super().__init__()
         self.settings = QSettings("TelegramFileExplorer", "Appearance")
         self._current_theme_mode = self.settings.value("theme_mode", "system", type=str)
+
+    def get_current_language(self) -> str:
+        """Get saved language preference, defaulting to English."""
+        app_settings = QSettings("TelegramFileExplorer", "AppSettings")
+        return app_settings.value("language", "en", type=str)
+
+    def set_language(self, lang: str):
+        """Save and emit language preference."""
+        if lang not in ["en", "ar"]:
+            lang = "en"
+        app_settings = QSettings("TelegramFileExplorer", "AppSettings")
+        app_settings.setValue("language", lang)
+        self.language_changed.emit(lang)
 
     @property
     def current_theme_mode(self) -> str:
@@ -121,7 +135,7 @@ class ThemeManager(QObject):
 
 
     def generate_qss(self, tokens: dict) -> str:
-        # Build complete, beautiful, clean QSS adhering strictly to Obsidian design system rules
+        # Build complete, beautiful, clean QSS adhering strictly to design system rules
         qss = f"""
         * {{
             font-family: "Inter", "Cairo", "IBM Plex Sans Arabic", "Segoe UI", -apple-system, BlinkMacSystemFont, Arial, sans-serif;
