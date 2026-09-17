@@ -206,6 +206,23 @@ class DatabaseRepository:
             session.add(new_chat)
             session.flush()
 
+    def get_files_by_chat(
+        self,
+        chat_id: int,
+        category: Optional[str] = None,
+        sort_by: str = "date",
+        sort_desc: bool = True,
+        limit: int = 10000,
+    ) -> List[IndexedFileModel]:
+        """Fetch files for a specific chat with optional media category filtering."""
+        return self.get_files(
+            chat_id=chat_id,
+            media_type=category,
+            sort_by=sort_by,
+            sort_desc=sort_desc,
+            limit=limit,
+        )
+
     def get_files(
         self,
         chat_id: Optional[int] = None,

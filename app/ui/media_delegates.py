@@ -5,12 +5,27 @@ from PySide6.QtWidgets import QStyledItemDelegate, QStyle, QStyleOptionViewItem,
 
 from .theme_manager import theme_manager
 from .icons import get_pixmap, get_icon
+from .fonts import get_font_for_text, get_body_font, get_caption_font, get_secondary_font
 from ..services.image_loader import thumbnail_manager
 from .media_card import format_bytes
 from .media_model import (
     FileIdRole, FilenameRole, SizeRole, DateRole, MediaTypeRole, 
     ThumbnailPathRole, FileModelRole, HasThumbnailRole, CaptionRole, IsDownloadedRole
 )
+
+
+def _get_icon_name_for_type(mtype: str) -> str:
+    mtype_str = str(mtype or "").upper()
+    if mtype_str == "IMAGE":
+        return "image"
+    elif mtype_str in ("VIDEO", "ROUND_VIDEO"):
+        return "video"
+    elif mtype_str in ("AUDIO", "VOICE"):
+        return "music"
+    elif mtype_str == "ARCHIVE":
+        return "archive"
+    return "file_text"
+
 
 class MediaGridDelegate(QStyledItemDelegate):
     download_clicked = Signal(object)
@@ -67,46 +82,32 @@ class MediaGridDelegate(QStyledItemDelegate):
             pixmap = thumbnail_manager.request_thumbnail(self.current_request_id, file_id, thumb_path, 160, 115)
             
         if pixmap and not pixmap.isNull():
-            # Scale pixmap to fit the area
             scaled_pixmap = pixmap.scaled(
                 thumb_rect.size(),
                 Qt.AspectRatioMode.KeepAspectRatioByExpanding,
                 Qt.TransformationMode.SmoothTransformation
             )
-            # Center the pixmap
             x_offset = (scaled_pixmap.width() - thumb_rect.width()) // 2
             y_offset = (scaled_pixmap.height() - thumb_rect.height()) // 2
             painter.drawPixmap(thumb_rect.topLeft(), scaled_pixmap, QRect(x_offset, y_offset, thumb_rect.width(), thumb_rect.height()))
         else:
-            # Fallback icon
             painter.fillRect(thumb_rect, QColor(tokens["bg_surface_2"]))
-            
-            icon_name = "file_text"
-            if mtype == "image":
-                icon_name = "image"
-            elif mtype == "video":
-                icon_name = "video"
-            elif mtype == "audio":
-                icon_name = "audio"
-            elif mtype == "archive":
-                icon_name = "archive"
-                
-            icon_pixmap = get_pixmap(icon_name, 48, tokens["text_secondary"])
+            icon_name = _get_icon_name_for_type(mtype)
+            icon_pixmap = get_pixmap(icon_name, color=tokens["text_secondary"], size=34)
             if not icon_pixmap.isNull():
                 ix = thumb_rect.center().x() - icon_pixmap.width() // 2
                 iy = thumb_rect.center().y() - icon_pixmap.height() // 2
                 painter.drawPixmap(ix, iy, icon_pixmap)
 
-        # Remove clip for remaining elements
         painter.setClipping(False)
 
-        # Draw text
+        # Filename
         filename = index.data(FilenameRole) or "Unknown File"
         file_size = index.data(SizeRole) or 0
         
         text_rect = QRect(rect.left() + 8, thumb_rect.bottom() + 8, rect.width() - 16, 20)
         
-        font = QFont("Inter", 10)
+        font = get_font_for_text(filename, pixel_size=13, weight=500)
         painter.setFont(font)
         painter.setPen(QColor(tokens["text_primary"]))
         
@@ -114,36 +115,34 @@ class MediaGridDelegate(QStyledItemDelegate):
         elided_text = fm.elidedText(filename, Qt.TextElideMode.ElideRight, text_rect.width())
         painter.drawText(text_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop, elided_text)
         
+        # File Size
+        size_str = format_bytes(file_size)
         size_rect = QRect(rect.left() + 8, text_rect.bottom() + 4, rect.width() - 16, 16)
-        size_font = QFont("Inter", 9)
+        size_font = get_caption_font(size_str)
         painter.setFont(size_font)
         painter.setPen(QColor(tokens["text_tertiary"]))
-        
-        painter.drawText(size_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop, format_bytes(file_size))
+        painter.drawText(size_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop, size_str)
 
-        # Hover actions
+        # Hover actions (Download and Open buttons)
         if is_hovered:
             btn_size = 28
             margin = 8
             
-            # Open button
             open_rect = QRect(rect.right() - btn_size - margin, rect.top() + margin, btn_size, btn_size)
-            # Download button
             download_rect = QRect(open_rect.left() - btn_size - 4, rect.top() + margin, btn_size, btn_size)
             
-            # Semi-transparent background
-            btn_bg = QColor(0, 0, 0, 153) # rgba(0,0,0,0.6)
+            btn_bg = QColor(0, 0, 0, 160)
             painter.setBrush(QBrush(btn_bg))
             painter.setPen(Qt.PenStyle.NoPen)
             
             painter.drawRoundedRect(open_rect, 6, 6)
             painter.drawRoundedRect(download_rect, 6, 6)
             
-            open_pixmap = get_pixmap("external_link", 16, "#FFFFFF")
+            open_pixmap = get_pixmap("external_link", color="#FFFFFF", size=16)
             if not open_pixmap.isNull():
                 painter.drawPixmap(open_rect.center().x() - 8, open_rect.center().y() - 8, open_pixmap)
                 
-            download_pixmap = get_pixmap("download", 16, "#FFFFFF")
+            download_pixmap = get_pixmap("download", color="#FFFFFF", size=16)
             if not download_pixmap.isNull():
                 painter.drawPixmap(download_rect.center().x() - 8, download_rect.center().y() - 8, download_pixmap)
 
@@ -170,6 +169,7 @@ class MediaGridDelegate(QStyledItemDelegate):
                 return True
                 
         return super().editorEvent(event, model, option, index)
+
 
 class MediaListDelegate(QStyledItemDelegate):
     download_clicked = Signal(object)
@@ -219,7 +219,6 @@ class MediaListDelegate(QStyledItemDelegate):
                 Qt.AspectRatioMode.KeepAspectRatioByExpanding,
                 Qt.TransformationMode.SmoothTransformation
             )
-            # Clip
             clip_path = QPainterPath()
             clip_path.addRoundedRect(QRectF(thumb_rect), 6, 6)
             painter.setClipPath(clip_path)
@@ -229,25 +228,16 @@ class MediaListDelegate(QStyledItemDelegate):
             painter.drawPixmap(thumb_rect.topLeft(), scaled, QRect(x_offset, y_offset, thumb_rect.width(), thumb_rect.height()))
             painter.setClipping(False)
         else:
-            icon_name = "file_text"
-            if mtype == "image":
-                icon_name = "image"
-            elif mtype == "video":
-                icon_name = "video"
-            elif mtype == "audio":
-                icon_name = "audio"
-            elif mtype == "archive":
-                icon_name = "archive"
-                
-            icon_pixmap = get_pixmap(icon_name, 20, tokens["text_secondary"])
+            icon_name = _get_icon_name_for_type(mtype)
+            icon_pixmap = get_pixmap(icon_name, color=tokens["text_secondary"], size=20)
             if not icon_pixmap.isNull():
                 ix = thumb_rect.center().x() - icon_pixmap.width() // 2
                 iy = thumb_rect.center().y() - icon_pixmap.height() // 2
                 painter.drawPixmap(ix, iy, icon_pixmap)
 
         # Date (right side)
-        date_str = index.data(DateRole) or ""
-        date_font = QFont("Inter", 11)
+        date_str = str(index.data(DateRole) or "")
+        date_font = get_caption_font(date_str)
         fm_date = QFontMetrics(date_font)
         date_width = fm_date.horizontalAdvance(date_str) + 16
         
@@ -258,13 +248,13 @@ class MediaListDelegate(QStyledItemDelegate):
 
         # Filename
         filename = index.data(FilenameRole) or "Unknown File"
-        name_font = QFont("Inter", 10)
+        name_font = get_font_for_text(filename, pixel_size=13, weight=500)
         fm_name = QFontMetrics(name_font)
         
         # Size
         file_size = index.data(SizeRole) or 0
         size_str = format_bytes(file_size)
-        size_font = QFont("Inter", 9)
+        size_font = get_caption_font(size_str)
         
         text_left = thumb_rect.right() + 12
         available_width = rect.right() - date_width - text_left - 8

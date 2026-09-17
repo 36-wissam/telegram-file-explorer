@@ -111,6 +111,15 @@ class ThemeManager(QObject):
             
         self.theme_changed.emit(tokens)
 
+    def toggle_theme(self):
+        """1-click toggle between dark and light themes."""
+        tokens = self.get_active_tokens()
+        if tokens == DARK_TOKENS:
+            self.set_theme("light")
+        else:
+            self.set_theme("dark")
+
+
     def generate_qss(self, tokens: dict) -> str:
         # Build complete, beautiful, clean QSS adhering strictly to Obsidian design system rules
         qss = f"""

@@ -1,8 +1,8 @@
-"""Chat sidebar list widget conforming strictly to the Obsidian specification (280px width collapsible to 72px, 64px rows, 40px circular avatars, debounced selection)."""
+"""Chat sidebar and rail widget conforming strictly to the Obsidian specification (280px expanded, 72px collapsed rail)."""
 
 from typing import List, Optional
 from pathlib import Path
-from PySide6.QtCore import Qt, Signal, QSize, QRectF, QTimer
+from PySide6.QtCore import Qt, Signal, QSize, QRectF, QTimer, QPoint
 from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPixmap, QBrush
 from PySide6.QtWidgets import (
     QFrame,
@@ -12,6 +12,8 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QPushButton,
+    QScrollArea,
+    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -20,6 +22,7 @@ from ..telegram.chats import ChatType, TelegramChat
 from ..core.logger import get_logger
 from .icons import get_icon, get_pixmap
 from .theme_manager import theme_manager
+from .fonts import get_font_for_text, get_title_font, get_section_header_font, get_body_font, get_secondary_font, get_caption_font
 
 logger = get_logger("ui.chat_list")
 
@@ -33,12 +36,65 @@ TYPE_COLORS = {
 }
 
 
+def generate_avatar_pixmap(chat: Optional[TelegramChat], size: int = 40, is_selected: bool = False, custom_initial: str = "") -> QPixmap:
+    """Create circular avatar with image or colored initials."""
+    target = QPixmap(size, size)
+    target.fill(Qt.transparent)
+
+    painter = QPainter(target)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+    path = QPainterPath()
+    path.addEllipse(0, 0, size, size)
+    painter.setClipPath(path)
+
+    if chat and chat.avatar_path and Path(chat.avatar_path).exists():
+        img = QPixmap(chat.avatar_path)
+        if not img.isNull():
+            painter.drawPixmap(0, 0, size, size, img.scaled(size, size, Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation))
+            painter.end()
+            return target
+
+    tokens = theme_manager.get_active_tokens()
+    if is_selected:
+        bg_color = QColor(tokens["accent"])
+        text_color = QColor("#FFFFFF")
+    elif custom_initial == "W":
+        bg_color = QColor(tokens["accent"])
+        text_color = QColor("#FFFFFF")
+    else:
+        bg_color = QColor(tokens["bg_surface_2"])
+        text_color = QColor(tokens["text_secondary"])
+
+    painter.setBrush(QBrush(bg_color))
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.drawRect(0, 0, size, size)
+
+    initial = custom_initial
+    if not initial:
+        name = (chat.display_name if chat else "?") or "?"
+        # Extract up to 2 characters for initials
+        parts = name.strip().split()
+        if len(parts) >= 2:
+            initial = (parts[0][:1] + parts[1][:1]).upper()
+        else:
+            initial = name[:2].upper()
+
+    painter.setPen(text_color)
+    font = get_font_for_text(initial, pixel_size=max(11, size // 3), weight=600)
+    painter.setFont(font)
+    painter.drawText(QRectF(0, 0, size, size), Qt.AlignmentFlag.AlignCenter, initial)
+    painter.end()
+    return target
+
+
 class ChatListItemWidget(QWidget):
     """Custom widget rendered for each chat in QListWidget (64px row height, 40px circular avatar)."""
 
-    def __init__(self, chat: TelegramChat, parent=None):
+    def __init__(self, chat: TelegramChat, is_selected: bool = False, parent=None):
         super().__init__(parent)
         self.chat = chat
+        self.is_selected = is_selected
         self.setFixedHeight(64)
         self._init_ui()
 
@@ -51,182 +107,197 @@ class ChatListItemWidget(QWidget):
         # Avatar Label (40x40 circular)
         self.avatar_label = QLabel()
         self.avatar_label.setFixedSize(40, 40)
-        self.avatar_label.setPixmap(self._generate_avatar())
+        self.avatar_label.setPixmap(generate_avatar_pixmap(self.chat, 40, is_selected=self.is_selected))
         layout.addWidget(self.avatar_label)
 
-        # Text Details (Title, Last message preview, Timestamp)
+        # Text Details (Title, Subtitle, Timestamp)
         text_layout = QVBoxLayout()
-        text_layout.setSpacing(2)
-        text_layout.setAlignment(Qt.AlignVCenter)
+        text_layout.setSpacing(3)
+        text_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
 
         # Top row: Title + Timestamp
         top_row = QHBoxLayout()
         top_row.setSpacing(6)
 
         title_label = QLabel(self.chat.display_name)
-        title_font = QFont("Inter", 10)
-        title_font.setBold(True)
-        title_label.setFont(title_font)
+        title_label.setFont(get_font_for_text(self.chat.display_name, pixel_size=13, weight=600))
         title_label.setStyleSheet(f"color: {tokens['text_primary']};")
         top_row.addWidget(title_label)
 
         top_row.addStretch()
 
-        # Time
         time_str = ""
         if self.chat.last_message_date:
             time_str = self.chat.last_message_date.strftime("%H:%M")
         time_label = QLabel(time_str)
-        time_label.setStyleSheet(f"color: {tokens['text_tertiary']}; font-size: 11px;")
+        time_label.setFont(get_caption_font(time_str))
+        time_label.setStyleSheet(f"color: {tokens['text_tertiary']};")
         top_row.addWidget(time_label)
 
         text_layout.addLayout(top_row)
 
-        # Bottom row: Preview / Subtitle + Unread Badge
+        # Bottom row: Subtitle / Username / Last Message
         bottom_row = QHBoxLayout()
         bottom_row.setSpacing(6)
 
         info_text = f"@{self.chat.username}" if self.chat.username else self.chat.chat_type.value
-        preview_label = QLabel(info_text)
-        preview_label.setStyleSheet(f"color: {tokens['text_secondary']}; font-size: 12px;")
-        bottom_row.addWidget(preview_label)
+        subtitle_label = QLabel(info_text)
+        subtitle_label.setFont(get_secondary_font(info_text))
+        subtitle_label.setStyleSheet(f"color: {tokens['text_secondary']};")
+        bottom_row.addWidget(subtitle_label)
 
         bottom_row.addStretch()
 
         # Unread Count Badge
         if self.chat.unread_count > 0:
-            unread_badge = QLabel(f"{self.chat.unread_count}")
+            unread_badge = QLabel(str(self.chat.unread_count))
             unread_badge.setStyleSheet(
                 f"background-color: {tokens['accent']}; color: #FFFFFF; border-radius: 9px; font-size: 11px; font-weight: 600; min-width: 18px; padding: 1px 6px;"
             )
-            unread_badge.setAlignment(Qt.AlignCenter)
+            unread_badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
             bottom_row.addWidget(unread_badge)
 
         text_layout.addLayout(bottom_row)
         layout.addLayout(text_layout)
 
-    def _generate_avatar(self) -> QPixmap:
-        """Create circular avatar with image or colored initials (40x40)."""
-        size = 40
-        target_pixmap = QPixmap(size, size)
-        target_pixmap.fill(Qt.transparent)
 
-        painter = QPainter(target_pixmap)
-        painter.setRenderHint(QPainter.Antialiasing)
+class RailAvatarButton(QPushButton):
+    """Circular 40x40 avatar button for collapsed 72px rail mode."""
 
-        path = QPainterPath()
-        path.addEllipse(0, 0, size, size)
-        painter.setClipPath(path)
+    def __init__(self, chat: TelegramChat, is_selected: bool = False, parent=None):
+        super().__init__(parent)
+        self.chat = chat
+        self._is_selected = is_selected
+        self.setFixedSize(44, 44)
+        self.setToolTip(f"{chat.display_name} ({chat.chat_type.value})")
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setStyleSheet("background: transparent; border: none; padding: 2px;")
+        self._update_icon()
 
-        if self.chat.avatar_path and Path(self.chat.avatar_path).exists():
-            img_pixmap = QPixmap(self.chat.avatar_path)
-            if not img_pixmap.isNull():
-                painter.drawPixmap(0, 0, size, size, img_pixmap.scaled(size, size, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation))
-                painter.end()
-                return target_pixmap
+    def set_selected(self, selected: bool):
+        self._is_selected = selected
+        self._update_icon()
 
-        palette = ["#5C8DFF", "#3DDC84", "#F5A623", "#A855F7", "#F1554C", "#7AA2FF"]
-        bg_color = QColor(palette[abs(self.chat.id) % len(palette)])
-
-        painter.setBrush(QBrush(bg_color))
-        painter.setPen(Qt.NoPen)
-        painter.drawRect(0, 0, size, size)
-
-        initial = (self.chat.display_name or "?")[0].upper()
-        painter.setPen(QColor("#FFFFFF"))
-        font = QFont("Inter", 12)
-        font.setBold(True)
-        painter.setFont(font)
-        painter.drawText(QRectF(0, 0, size, size), Qt.AlignCenter, initial)
-
-        painter.end()
-        return target_pixmap
+    def _update_icon(self):
+        pixmap = generate_avatar_pixmap(self.chat, 40, is_selected=self._is_selected)
+        self.setIcon(pixmap)
+        self.setIconSize(QSize(40, 40))
 
 
 class ChatListWidget(QWidget):
-    """280px sidebar widget for chat discovery, debounced selection, and collapsible rail."""
+    """Dual-mode sidebar: Collapsible between 72px Rail and 280px Expanded Sidebar."""
 
-    chat_selected = Signal(object)  # Emits TelegramChat (64-bit safe)
+    chat_selected = Signal(object)
     refresh_requested = Signal()
+    settings_clicked = Signal()
+    collapsed_changed = Signal(bool)
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setMinimumWidth(72)
-        self.setMaximumWidth(280)
-        self.resize(280, 700)
         self._all_chats: List[TelegramChat] = []
         self._current_filter: str = "ALL"
         self._is_collapsed: bool = False
+        self._selected_chat_id: Optional[int] = None
         self._pending_chat: Optional[TelegramChat] = None
 
-        # 150ms debounce timer for rapid clicking through chats
+        # 150ms debounce timer
         self._debounce_timer = QTimer(self)
         self._debounce_timer.setSingleShot(True)
         self._debounce_timer.setInterval(150)
         self._debounce_timer.timeout.connect(self._emit_debounced_chat)
 
         self._init_ui()
+        self.set_collapsed(False)
+
+    @property
+    def is_collapsed(self) -> bool:
+        return self._is_collapsed
 
     def _init_ui(self):
         tokens = theme_manager.get_active_tokens()
-        self.setStyleSheet(f"background-color: {tokens['bg_surface']}; border-right: 1px solid {tokens['border']};")
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(10)
+        self.setStyleSheet(
+            f"""
+            ChatListWidget {{
+                background-color: {tokens['bg_surface']};
+                border-right: 1px solid {tokens['border']};
+            }}
+            """
+        )
 
-        # Header Bar: Chats Title + Refresh button
-        header_layout = QHBoxLayout()
-        header_title = QLabel("Chats")
-        header_font = QFont("Inter", 14)
-        header_font.setBold(True)
-        header_title.setFont(header_font)
-        header_title.setStyleSheet(f"color: {tokens['text_primary']};")
-        header_layout.addWidget(header_title)
+        self.main_layout = QVBoxLayout(self)
+        self.main_layout.setContentsMargins(0, 0, 0, 0)
+        self.main_layout.setSpacing(0)
 
-        header_layout.addStretch()
+        # Stack to switch between Expanded Sidebar (page 0) and Collapsed Rail (page 1)
+        self.mode_stack = QStackedWidget(self)
+        self.main_layout.addWidget(self.mode_stack)
 
-        self.btn_refresh = QPushButton("Refresh")
-        self.btn_refresh.setObjectName("secondaryButton")
-        self.btn_refresh.setIcon(get_icon("refresh_cw", color=tokens["text_secondary"], size=13))
-        self.btn_refresh.setToolTip("Refresh chat list from Telegram")
-        self.btn_refresh.setStyleSheet("padding: 4px 10px; font-size: 11px;")
-        self.btn_refresh.clicked.connect(self.refresh_requested.emit)
-        header_layout.addWidget(self.btn_refresh)
-        layout.addLayout(header_layout)
+        # --- Page 0: Expanded Sidebar (280px) ---
+        self.expanded_container = QWidget()
+        exp_layout = QVBoxLayout(self.expanded_container)
+        exp_layout.setContentsMargins(12, 12, 12, 12)
+        exp_layout.setSpacing(10)
 
-        # Search Box
+        # Header: 'W' Avatar + Title 'Slidy Explorer' + Collapse Chevron '<'
+        header_row = QHBoxLayout()
+        header_row.setSpacing(10)
+
+        self.btn_user_avatar = QLabel()
+        self.btn_user_avatar.setFixedSize(36, 36)
+        self.btn_user_avatar.setPixmap(generate_avatar_pixmap(None, 36, custom_initial="W"))
+        header_row.addWidget(self.btn_user_avatar)
+
+        self.lbl_app_title = QLabel("Slidy Explorer")
+        self.lbl_app_title.setFont(get_section_header_font("Slidy Explorer"))
+        self.lbl_app_title.setStyleSheet(f"color: {tokens['text_primary']}; font-weight: 600;")
+        header_row.addWidget(self.lbl_app_title)
+
+        header_row.addStretch()
+
+        self.btn_collapse = QPushButton()
+        self.btn_collapse.setIcon(get_icon("chevron_left", color=tokens["text_secondary"], size=16))
+        self.btn_collapse.setFixedSize(28, 28)
+        self.btn_collapse.setStyleSheet("background: transparent; border: none; border-radius: 4px;")
+        self.btn_collapse.setToolTip("Collapse Sidebar")
+        self.btn_collapse.clicked.connect(self.toggle_collapse)
+        header_row.addWidget(self.btn_collapse)
+
+        exp_layout.addLayout(header_row)
+
+        # Search Input
+        search_box = QHBoxLayout()
+        search_box.setSpacing(0)
+
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Search chats...")
         self.search_input.setClearButtonEnabled(True)
+        self.search_input.setFixedHeight(36)
+        self.search_input.setFont(get_body_font("Search"))
+        self.search_input.setStyleSheet(
+            f"""
+            QLineEdit {{
+                background-color: {tokens['bg_surface_2']};
+                border: 1px solid {tokens['border']};
+                border-radius: 6px;
+                color: {tokens['text_primary']};
+                padding: 0 10px;
+            }}
+            QLineEdit:focus {{
+                border-color: {tokens['accent']};
+            }}
+            """
+        )
         self.search_input.textChanged.connect(self._apply_filter)
-        layout.addWidget(self.search_input)
+        exp_layout.addWidget(self.search_input)
 
-        # Filter Tabs: All, Private, Groups, Channels
-        filter_layout = QHBoxLayout()
-        filter_layout.setSpacing(4)
+        # Refresh button compatibility (invisible or accessible via button)
+        self.btn_refresh = QPushButton("Refresh")
+        self.btn_refresh.setObjectName("secondaryButton")
+        self.btn_refresh.setIcon(get_icon("refresh_cw", color=tokens["text_secondary"], size=13))
+        self.btn_refresh.clicked.connect(self.refresh_requested.emit)
+        self.btn_refresh.hide()  # Hidden to preserve clean screenshot UI while keeping API compatibility
 
-        self.btn_filter_all = QPushButton("All")
-        self.btn_filter_users = QPushButton("Private")
-        self.btn_filter_groups = QPushButton("Groups")
-        self.btn_filter_channels = QPushButton("Channels")
-
-        self.filter_buttons = [
-            (self.btn_filter_all, "ALL"),
-            (self.btn_filter_users, "USER"),
-            (self.btn_filter_groups, "GROUP"),
-            (self.btn_filter_channels, "CHANNEL"),
-        ]
-
-        for btn, cat in self.filter_buttons:
-            btn.setObjectName("filterTabButton")
-            btn.setCheckable(True)
-            btn.clicked.connect(lambda checked=False, c=cat: self._set_category_filter(c))
-            filter_layout.addWidget(btn)
-
-        self.btn_filter_all.setChecked(True)
-        layout.addLayout(filter_layout)
-
-        # List Widget
+        # Chat List Widget
         self.list_widget = QListWidget()
         self.list_widget.setStyleSheet(
             f"""
@@ -248,8 +319,93 @@ class ChatListWidget(QWidget):
             }}
             """
         )
-        self.list_widget.itemClicked.connect(self._on_item_clicked)
-        layout.addWidget(self.list_widget)
+        self.list_widget.itemClicked.connect(self._on_list_item_clicked)
+        exp_layout.addWidget(self.list_widget)
+
+        # Bottom Settings Row
+        bottom_settings_row = QHBoxLayout()
+        self.btn_settings_expanded = QPushButton("الإعدادات")
+        self.btn_settings_expanded.setIcon(get_icon("settings", color=tokens["text_secondary"], size=18))
+        self.btn_settings_expanded.setFont(get_body_font("الإعدادات"))
+        self.btn_settings_expanded.setStyleSheet(
+            f"""
+            QPushButton {{
+                background: transparent;
+                border: none;
+                color: {tokens['text_secondary']};
+                text-align: left;
+                padding: 8px 12px;
+                border-radius: 6px;
+            }}
+            QPushButton:hover {{
+                background-color: {tokens['bg_hover']};
+                color: {tokens['text_primary']};
+            }}
+            """
+        )
+        self.btn_settings_expanded.clicked.connect(self.settings_clicked.emit)
+        bottom_settings_row.addWidget(self.btn_settings_expanded)
+        exp_layout.addLayout(bottom_settings_row)
+
+        self.mode_stack.addWidget(self.expanded_container)
+
+        # --- Page 1: Collapsed Rail (72px) ---
+        self.rail_container = QWidget()
+        rail_layout = QVBoxLayout(self.rail_container)
+        rail_layout.setContentsMargins(8, 12, 8, 12)
+        rail_layout.setSpacing(12)
+        rail_layout.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+
+        # Top: 'W' Avatar + Expand Chevron
+        top_rail_row = QHBoxLayout()
+        top_rail_row.setSpacing(4)
+        top_rail_row.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        self.btn_rail_avatar = QPushButton()
+        self.btn_rail_avatar.setFixedSize(40, 40)
+        self.btn_rail_avatar.setIcon(generate_avatar_pixmap(None, 40, custom_initial="W"))
+        self.btn_rail_avatar.setIconSize(QSize(40, 40))
+        self.btn_rail_avatar.setStyleSheet("background: transparent; border: none;")
+        self.btn_rail_avatar.clicked.connect(self.toggle_collapse)
+        top_rail_row.addWidget(self.btn_rail_avatar)
+
+        self.btn_expand = QPushButton()
+        self.btn_expand.setIcon(get_icon("chevron_right", color=tokens["text_secondary"], size=14))
+        self.btn_expand.setFixedSize(20, 28)
+        self.btn_expand.setStyleSheet("background: transparent; border: none;")
+        self.btn_expand.setToolTip("Expand Sidebar")
+        self.btn_expand.clicked.connect(self.toggle_collapse)
+        top_rail_row.addWidget(self.btn_expand)
+
+        rail_layout.addLayout(top_rail_row)
+
+        # Middle: Scrollable list of avatar buttons
+        self.rail_scroll = QScrollArea()
+        self.rail_scroll.setWidgetResizable(True)
+        self.rail_scroll.setStyleSheet("background: transparent; border: none;")
+        self.rail_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.rail_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+
+        self.rail_items_container = QWidget()
+        self.rail_items_container.setStyleSheet("background: transparent;")
+        self.rail_items_layout = QVBoxLayout(self.rail_items_container)
+        self.rail_items_layout.setContentsMargins(0, 4, 0, 4)
+        self.rail_items_layout.setSpacing(8)
+        self.rail_items_layout.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+
+        self.rail_scroll.setWidget(self.rail_items_container)
+        rail_layout.addWidget(self.rail_scroll)
+
+        # Bottom: Settings Gear button
+        self.btn_settings_rail = QPushButton()
+        self.btn_settings_rail.setFixedSize(40, 40)
+        self.btn_settings_rail.setIcon(get_icon("settings", color=tokens["text_secondary"], size=20))
+        self.btn_settings_rail.setStyleSheet("background: transparent; border: none; border-radius: 6px;")
+        self.btn_settings_rail.setToolTip("Settings")
+        self.btn_settings_rail.clicked.connect(self.settings_clicked.emit)
+        rail_layout.addWidget(self.btn_settings_rail, alignment=Qt.AlignmentFlag.AlignHCenter)
+
+        self.mode_stack.addWidget(self.rail_container)
 
     @property
     def chats(self) -> List[TelegramChat]:
@@ -259,17 +415,34 @@ class ChatListWidget(QWidget):
         self._all_chats = chats
         self._apply_filter()
 
+    def set_collapsed(self, collapsed: bool):
+        self._is_collapsed = collapsed
+        if collapsed:
+            self.setFixedWidth(72)
+            self.mode_stack.setCurrentIndex(1)
+        else:
+            self.setFixedWidth(280)
+            self.mode_stack.setCurrentIndex(0)
+        self.collapsed_changed.emit(collapsed)
+
+    def toggle_collapse(self):
+        self.set_collapsed(not self._is_collapsed)
+
     def _set_category_filter(self, category: str):
         self._current_filter = category
-        for btn, cat in self.filter_buttons:
-            btn.setChecked(cat == category)
         self._apply_filter()
 
     def _apply_filter(self):
         query = self.search_input.text().strip().lower()
         self.list_widget.clear()
 
-        matched = 0
+        # Clear rail buttons
+        while self.rail_items_layout.count():
+            item = self.rail_items_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        filtered_chats = []
         for chat in self._all_chats:
             if self._current_filter == "CHANNEL" and chat.chat_type != ChatType.CHANNEL:
                 continue
@@ -284,24 +457,45 @@ class ChatListWidget(QWidget):
                 in_id = query in str(chat.id)
                 if not (in_title or in_username or in_id):
                     continue
+            filtered_chats.append(chat)
 
+        for chat in filtered_chats:
+            is_sel = (self._selected_chat_id == chat.id)
+
+            # Expanded item
             item = QListWidgetItem(self.list_widget)
             item.setSizeHint(QSize(0, 64))
             item.setData(Qt.UserRole, chat)
-
-            widget = ChatListItemWidget(chat)
+            widget = ChatListItemWidget(chat, is_selected=is_sel)
             self.list_widget.setItemWidget(item, widget)
-            matched += 1
 
-    def _on_item_clicked(self, item: QListWidgetItem):
-        """Handle chat selection with 150ms debounce to eliminate lag on fast clicking."""
+            # Rail item
+            rail_btn = RailAvatarButton(chat, is_selected=is_sel)
+            rail_btn.clicked.connect(lambda checked=False, c=chat: self._on_rail_chat_clicked(c))
+            self.rail_items_layout.addWidget(rail_btn)
+
+    def _on_list_item_clicked(self, item: QListWidgetItem):
         chat: TelegramChat = item.data(Qt.UserRole)
         if chat:
-            self._pending_chat = chat
-            self._debounce_timer.start()
+            self._select_chat_internal(chat)
+
+    def _on_rail_chat_clicked(self, chat: TelegramChat):
+        self._select_chat_internal(chat)
+
+    def _select_chat_internal(self, chat: TelegramChat):
+        self._selected_chat_id = chat.id
+        self._pending_chat = chat
+        self._debounce_timer.start()
+        # Refresh visual selection in both views
+        self._update_selection_visuals()
+
+    def _update_selection_visuals(self):
+        for i in range(self.rail_items_layout.count()):
+            w = self.rail_items_layout.itemAt(i).widget()
+            if isinstance(w, RailAvatarButton):
+                w.set_selected(w.chat.id == self._selected_chat_id)
 
     def _emit_debounced_chat(self):
-        """Emit chat selection signal after debounce window settles."""
         if self._pending_chat:
-            logger.info("Debounced selected chat: %s (ID: %d)", self._pending_chat.display_name, self._pending_chat.id)
+            logger.info("Selected chat: %s (ID: %d)", self._pending_chat.display_name, self._pending_chat.id)
             self.chat_selected.emit(self._pending_chat)

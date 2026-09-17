@@ -39,6 +39,7 @@ class Settings:
     app_version: str = "0.1.0"
     log_level: str = "INFO"
     app_theme: str = "dark"
+    max_concurrent_downloads: int = 3
 
     def __post_init__(self):
         # Override with environment variables if present

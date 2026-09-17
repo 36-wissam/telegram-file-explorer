@@ -38,6 +38,8 @@ from .inline_auth import InlineAuthWidget
 from .media_browser import ChatMediaBrowserWidget
 from .preview_panel import PreviewDialog, PreviewPanel
 from .settings_dialog import SettingsDialog
+from .settings_panel import SettingsPanel
+from .theme_manager import theme_manager
 from .styles import DARK_THEME, LIGHT_THEME
 
 logger = get_logger("ui.main_window")
@@ -93,7 +95,7 @@ class MainWindow(QMainWindow):
         self.action_settings = QAction("&Settings...", self)
         self.action_settings.setShortcut(QKeySequence("Ctrl+,"))
         self.action_settings.setStatusTip("Open application settings")
-        self.action_settings.triggered.connect(self.open_settings_dialog)
+        self.action_settings.triggered.connect(self._toggle_settings_panel)
         file_menu.addAction(self.action_settings)
 
         file_menu.addSeparator()
@@ -248,20 +250,29 @@ class MainWindow(QMainWindow):
         page_layout.setContentsMargins(0, 0, 0, 0)
         page_layout.setSpacing(0)
 
-        # 1. Top Bar Header
+        # 1. Top Bar Header (kept for shortcuts & programmatic access; hidden to match pixel screenshots)
         self.top_bar = self._create_top_bar()
+        self.top_bar.hide()
         page_layout.addWidget(self.top_bar)
 
-        # 2. Main Horizontal Splitter (Sidebar 300px + Media Browser)
-        self.main_splitter = QSplitter(Qt.Horizontal)
-        self.main_splitter.setStyleSheet("QSplitter::handle { background-color: #27272A; width: 1px; }")
+        # 1. Slide-in Settings Panel (Docked on left, width 320px, Screenshot 4)
+        self.settings_panel = SettingsPanel(repo=self.repo, parent=self)
+        self.settings_panel.close_requested.connect(self._hide_settings_panel)
+        self.settings_panel.hide()
 
-        # Sidebar: Chat List Widget
+        # 2. Main Horizontal Splitter
+        self.main_splitter = QSplitter(Qt.Horizontal)
+        tokens = theme_manager.get_active_tokens()
+        self.main_splitter.setStyleSheet(f"QSplitter::handle {{ background-color: {tokens['border']}; width: 1px; }}")
+
+        self.main_splitter.addWidget(self.settings_panel)
+
+        # Sidebar: Chat List Widget (Screenshots 1-3)
         self.chat_list_widget = ChatListWidget()
-        self.chat_list_widget.setMinimumWidth(260)
-        self.chat_list_widget.setMaximumWidth(340)
         self.chat_list_widget.chat_selected.connect(self._on_chat_selected)
         self.chat_list_widget.refresh_requested.connect(self.refresh_chats)
+        self.chat_list_widget.settings_clicked.connect(self._toggle_settings_panel)
+        self.chat_list_widget.collapsed_changed.connect(self._on_chat_sidebar_collapsed)
         self.main_splitter.addWidget(self.chat_list_widget)
 
         # Main Content: Chat Media Browser Widget
@@ -285,10 +296,11 @@ class MainWindow(QMainWindow):
         self.file_explorer_widget = self.media_browser
         self.view_stack = self.media_browser.view_stack
 
-        self.main_splitter.setSizes([280, 800, 0])
+        self.main_splitter.setSizes([0, 280, 800, 0])
         self.main_splitter.setStretchFactor(0, 0)
-        self.main_splitter.setStretchFactor(1, 1)
-        self.main_splitter.setStretchFactor(2, 0)
+        self.main_splitter.setStretchFactor(1, 0)
+        self.main_splitter.setStretchFactor(2, 1)
+        self.main_splitter.setStretchFactor(3, 0)
 
         page_layout.addWidget(self.main_splitter)
         return page
@@ -359,7 +371,7 @@ class MainWindow(QMainWindow):
         self.btn_settings.setObjectName("secondaryButton")
         self.btn_settings.setIcon(get_icon("settings", color="#A1A1AA", size=14))
         self.btn_settings.setToolTip("Open Settings (Ctrl+,)")
-        self.btn_settings.clicked.connect(self.open_settings_dialog)
+        self.btn_settings.clicked.connect(self._toggle_settings_panel)
         layout.addWidget(self.btn_settings)
 
         # Toggle Preview Button
@@ -504,6 +516,27 @@ class MainWindow(QMainWindow):
         """Automatically display chat header, cached files, and progressively stream newer/older media."""
         self.media_browser.set_chat(chat)
         self.status_bar.showMessage(f"Viewing media in {chat.display_name}")
+
+
+    def _toggle_settings_panel(self):
+        if self.settings_panel.isVisible():
+            self.settings_panel.hide()
+        else:
+            self.settings_panel.show()
+            self.settings_panel.setFixedWidth(320)
+            sizes = self.main_splitter.sizes()
+            if len(sizes) >= 4:
+                sizes[0] = 320
+                self.main_splitter.setSizes(sizes)
+
+    def _hide_settings_panel(self):
+        self.settings_panel.hide()
+
+    def _on_chat_sidebar_collapsed(self, collapsed: bool):
+        sizes = self.main_splitter.sizes()
+        if len(sizes) >= 4:
+            sizes[1] = 72 if collapsed else 280
+            self.main_splitter.setSizes(sizes)
 
     def _on_file_selected(self, file_model: IndexedFileModel):
         """Handle single-click selection on media file."""
