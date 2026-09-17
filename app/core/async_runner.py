@@ -11,14 +11,40 @@ logger = get_logger("core.async_runner")
 
 
 class AsyncRunner(QObject):
-    """Manages a background thread running an asyncio event loop for Telethon."""
+    """Manages a background thread running an asyncio event loop for Telethon.
+
+    Guarantees thread-safe dispatching of callbacks onto Qt main GUI thread.
+    """
+
+    _dispatch_signal = Signal(object, object)
 
     def __init__(self):
         super().__init__()
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._thread: Optional[threading.Thread] = None
         self._is_running = False
+        self._dispatch_signal.connect(self._on_dispatch)
         self._start_loop_thread()
+
+    def _on_dispatch(self, func, arg):
+        """Execute callback function on the Qt GUI thread."""
+        try:
+            func(arg)
+        except Exception as e:
+            logger.error("Exception in GUI thread callback: %s", e, exc_info=True)
+
+    def _dispatch(self, func, arg):
+        """Dispatch callback to Qt main thread if application is running, else execute directly."""
+        from PySide6.QtWidgets import QApplication
+
+        qapp = QApplication.instance()
+        if qapp is not None and threading.current_thread() is not threading.main_thread():
+            self._dispatch_signal.emit(func, arg)
+        else:
+            try:
+                func(arg)
+            except Exception as e:
+                logger.error("Exception executing callback directly: %s", e, exc_info=True)
 
     def _start_loop_thread(self) -> None:
         """Start background daemon thread with dedicated asyncio loop."""
@@ -42,7 +68,7 @@ class AsyncRunner(QObject):
         return future.result()
 
     def run_coroutine_async(self, coro: Coroutine, callback=None, error_callback=None):
-        """Submit a coroutine to the background loop asynchronously with callbacks."""
+        """Submit a coroutine to the background loop asynchronously with thread-safe callbacks."""
         if not self._loop or not self._is_running:
             raise RuntimeError("Async event loop is not running.")
 
@@ -52,11 +78,11 @@ class AsyncRunner(QObject):
             try:
                 res = fut.result()
                 if callback:
-                    callback(res)
+                    self._dispatch(callback, res)
             except Exception as exc:
                 logger.error("Error in background coroutine: %s", exc)
                 if error_callback:
-                    error_callback(exc)
+                    self._dispatch(error_callback, exc)
 
         future.add_done_callback(done_handler)
         return future

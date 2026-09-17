@@ -152,13 +152,14 @@ class MainWindow(QMainWindow):
         self.central_stack.addWidget(self.explorer_page)
 
     def _create_welcome_page(self) -> QWidget:
-        """Create landing / authentication page."""
+        """Create landing / authentication page with inline multi-step sign in."""
         page = QWidget()
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(32, 32, 32, 32)
-        layout.setSpacing(20)
+        layout.setContentsMargins(32, 24, 32, 24)
+        layout.setSpacing(16)
 
         self.card = QFrame(page)
+        self.card.setMaximumWidth(560)
         self.card.setStyleSheet(
             """
             QFrame {
@@ -183,45 +184,28 @@ class MainWindow(QMainWindow):
         card_layout.addWidget(title_label)
 
         subtitle_label = QLabel(
-            "Browse, index, search, preview, and download files from your Telegram account."
+            "Local-first Telegram MTProto file manager, full-text search, and downloader."
         )
         subtitle_label.setAlignment(Qt.AlignCenter)
-        subtitle_label.setStyleSheet("color: #949ba4; font-size: 14px;")
+        subtitle_label.setStyleSheet("color: #949ba4; font-size: 13px;")
         card_layout.addWidget(subtitle_label)
 
-        self.status_box = QFrame(page)
-        self.status_box.setStyleSheet(
-            """
-            QFrame {
-                background-color: #2b2d31;
-                border-radius: 8px;
-                padding: 16px;
-                min-width: 460px;
-                max-width: 540px;
-            }
-            """
+        privacy_badge = QLabel("🛡️ 100% Local-First: Credentials & sessions never leave this PC")
+        privacy_badge.setAlignment(Qt.AlignCenter)
+        privacy_badge.setStyleSheet(
+            "background-color: #232428; color: #57f287; border-radius: 6px; "
+            "padding: 6px 12px; font-size: 11px; font-weight: 500;"
         )
-        self.status_box_layout = QVBoxLayout(self.status_box)
-        self.status_box_layout.setSpacing(8)
+        card_layout.addWidget(privacy_badge)
 
-        self.account_status_label = QLabel("<b>Account Status:</b> Checking session...")
-        self.account_status_label.setStyleSheet("font-size: 13px;")
-        self.status_box_layout.addWidget(self.account_status_label)
-
-        self.details_label = QLabel("")
-        self.details_label.setStyleSheet("font-size: 12px; color: #dbdee1;")
-        self.details_label.setWordWrap(True)
-        self.status_box_layout.addWidget(self.details_label)
-
-        card_layout.addWidget(self.status_box, alignment=Qt.AlignCenter)
-
-        self.btn_auth_action = QPushButton("Sign in to Telegram")
-        self.btn_auth_action.setObjectName("primaryButton")
-        self.btn_auth_action.clicked.connect(self.open_login_dialog)
-        card_layout.addWidget(self.btn_auth_action, alignment=Qt.AlignCenter)
+        # Embedded Inline Authentication Widget
+        from .inline_auth import InlineAuthWidget
+        self.auth_widget = InlineAuthWidget(self.auth_service, parent=self)
+        self.auth_widget.authenticated.connect(self._on_login_success)
+        card_layout.addWidget(self.auth_widget)
 
         layout.addStretch()
-        layout.addWidget(self.card)
+        layout.addWidget(self.card, alignment=Qt.AlignCenter)
         layout.addStretch()
         return page
 
@@ -452,22 +436,12 @@ class MainWindow(QMainWindow):
             self.action_refresh_chats.setEnabled(False)
 
             if state == AuthState.NOT_CONFIGURED:
-                self.account_status_label.setText(
-                    "<b>Account Status:</b> <span style='color: #fee75c;'>API Not Configured</span>"
-                )
-                self.details_label.setText("Configure your Telegram API ID & Hash to sign in.")
-                self.btn_auth_action.setText("Configure & Sign In")
                 self.status_auth_indicator.setText("🟡 API Not Configured")
                 self.status_auth_indicator.setStyleSheet(
                     "color: #fee75c; font-size: 11px; padding: 0 10px; font-weight: bold;"
                 )
                 self.status_bar.showMessage("Telegram API credentials required.")
             else:
-                self.account_status_label.setText(
-                    "<b>Account Status:</b> <span style='color: #ed4245;'>Not Signed In</span>"
-                )
-                self.details_label.setText("Sign in with your Telegram account to explore chats and files.")
-                self.btn_auth_action.setText("Sign in to Telegram")
                 self.status_auth_indicator.setText("🔴 Not Signed In")
                 self.status_auth_indicator.setStyleSheet(
                     "color: #ed4245; font-size: 11px; padding: 0 10px; font-weight: bold;"
@@ -506,13 +480,14 @@ class MainWindow(QMainWindow):
         self.status_bar.showMessage(f"Viewing chat: {chat.display_name} (ID: {chat.id})")
 
     def open_login_dialog(self):
-        """Open the stepped MTProto login dialog."""
-        dialog = LoginDialog(self.auth_service, parent=self)
-        dialog.authenticated.connect(self._on_login_success)
-        dialog.exec()
+        """Switch to welcome page and focus the inline sign-in card."""
+        self.central_stack.setCurrentIndex(0)
+        self.action_login.setEnabled(True)
+        if hasattr(self, "auth_widget"):
+            self.auth_widget.reset_to_initial()
 
     def _on_login_success(self, user_dict):
-        """Callback when user completes login in dialog."""
+        """Callback when user completes login."""
         self.update_auth_ui()
         self.refresh_chats()
 
@@ -533,6 +508,8 @@ class MainWindow(QMainWindow):
         def on_success(_):
             self.chat_list_widget.set_chats([])
             self.chat_detail_widget.set_chat(None)
+            if hasattr(self, "auth_widget"):
+                self.auth_widget.reset_to_initial()
             self.update_auth_ui()
             self.status_bar.showMessage("Signed out successfully.")
 

@@ -85,13 +85,13 @@ class Settings:
             with open(self.local_config_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
 
-            if not self.api_id and "api_id" in data:
+            if "api_id" in data and data["api_id"]:
                 try:
                     self.api_id = int(data["api_id"])
                 except (ValueError, TypeError):
                     pass
 
-            if not self.api_hash and "api_hash" in data:
+            if "api_hash" in data and data["api_hash"]:
                 self.api_hash = str(data["api_hash"]).strip() or None
 
             if "session_name" in data and data["session_name"]:

@@ -272,7 +272,12 @@ class LoginDialog(QDialog):
 
         def on_error(exc):
             self.btn_submit_code.setEnabled(True)
-            if isinstance(exc, SessionPasswordNeededError):
+            if (
+                isinstance(exc, SessionPasswordNeededError)
+                or "SessionPasswordNeededError" in type(exc).__name__
+                or "Two-steps verification is enabled" in str(exc)
+                or "password is required" in str(exc).lower()
+            ):
                 self.set_step(3, "Two-Step Verification", "Enter your Telegram 2FA cloud password")
             else:
                 self.show_error(str(exc))
