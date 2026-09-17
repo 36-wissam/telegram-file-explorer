@@ -38,7 +38,11 @@ def test_download_manager_start_and_cancel(tmp_path):
     client = MagicMock()
     client.is_connected.return_value = True
     client.get_messages = AsyncMock()
-    client.download_media = AsyncMock()
+    
+    async def fake_download(*args, **kwargs):
+        await asyncio.sleep(0.5)
+        return str(tmp_path / "test_file.pdf")
+    client.download_media = AsyncMock(side_effect=fake_download)
     client_manager.client = client
 
     manager = DownloadManager(client_manager)

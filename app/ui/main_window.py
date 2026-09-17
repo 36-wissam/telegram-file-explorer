@@ -220,12 +220,13 @@ class MainWindow(QMainWindow):
         """Create clean welcome / sign-in screen."""
         tokens = theme_manager.get_active_tokens()
         page = QWidget()
-        page.setStyleSheet(f"background-color: {tokens['bg_base']};")
+        page.setObjectName("welcomePage")
         layout = QVBoxLayout(page)
         layout.setContentsMargins(32, 24, 32, 24)
         layout.setSpacing(16)
 
         self.card = QFrame(page)
+        self.card.setObjectName("welcomeCard")
         self.card.setMaximumWidth(560)
         self.card.setStyleSheet(
             f"""
@@ -262,7 +263,7 @@ class MainWindow(QMainWindow):
         """Create the primary workspace: Left Sidebar | Media Browser (stretch) | Right Dock Panels (320px)."""
         tokens = theme_manager.get_active_tokens()
         page = QWidget()
-        page.setStyleSheet(f"background-color: {tokens['bg_base']};")
+        page.setObjectName("workspacePage")
         page_layout = QVBoxLayout(page)
         page_layout.setContentsMargins(0, 0, 0, 0)
         page_layout.setSpacing(0)
@@ -435,23 +436,7 @@ class MainWindow(QMainWindow):
         self._update_status_files_indicator()
 
     def _on_theme_changed(self, tokens: dict):
-        """Update window canvas backgrounds dynamically on theme switch."""
-        self.workspace_page.setStyleSheet(f"background-color: {tokens['bg_base']};")
-        self.welcome_page.setStyleSheet(f"background-color: {tokens['bg_base']};")
-        self.card.setStyleSheet(
-            f"""
-            QFrame {{
-                background-color: {tokens['bg_surface']};
-                border: 1px solid {tokens['border']};
-                border-radius: 12px;
-                padding: 24px;
-            }}
-            """
-        )
-        self.main_splitter.setStyleSheet(f"QSplitter::handle {{ background-color: {tokens['border']}; width: 1px; }}")
-        self.status_files_indicator.setStyleSheet(
-            f"color: {tokens['text_secondary']}; font-size: 11px; padding: 0 10px; font-weight: 500;"
-        )
+        """Update window title bar dynamically on theme switch."""
         self._update_window_title_bar()
 
     def _update_window_title_bar(self):
@@ -587,6 +572,50 @@ class MainWindow(QMainWindow):
     # ==========================================
     # Slide + Fade Animation Helpers
     # ==========================================
+    def _get_panel_target_width(self) -> int:
+        """Calculate clamped panel width (340px per spec, clamped to min(340px, int(window_width * 0.45)))."""
+        total_w = self.width() if self.width() > 0 else 1200
+        return min(340, max(280, int(total_w * 0.45)))
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._adjust_panels_on_resize()
+
+    def _adjust_panels_on_resize(self):
+        """Ensure right-docked panels and splitter panes clamp correctly when window resizes."""
+        if not hasattr(self, "main_splitter"):
+            return
+        sizes = self.main_splitter.sizes()
+        if len(sizes) < 4:
+            return
+
+        sidebar_w = sizes[0]
+        preview_w = sizes[2]
+        settings_w = sizes[3]
+        total_w = self.main_splitter.width()
+        if total_w <= 0:
+            return
+
+        target_w = self._get_panel_target_width()
+
+        if settings_w > 0:
+            actual_w = min(target_w, max(280, total_w - sidebar_w - 50))
+            self.settings_panel.setFixedWidth(actual_w)
+            content_w = max(50, total_w - sidebar_w - actual_w)
+            self.main_splitter.setSizes([sidebar_w, content_w, 0, actual_w])
+            if self.settings_panel.layout():
+                self.settings_panel.layout().activate()
+        elif preview_w > 0:
+            actual_w = min(target_w, max(280, total_w - sidebar_w - 50))
+            self.preview_panel.setFixedWidth(actual_w)
+            content_w = max(50, total_w - sidebar_w - actual_w)
+            self.main_splitter.setSizes([sidebar_w, content_w, actual_w, 0])
+            if self.preview_panel.layout():
+                self.preview_panel.layout().activate()
+        else:
+            content_w = max(50, total_w - sidebar_w)
+            self.main_splitter.setSizes([sidebar_w, content_w, 0, 0])
+
     def _animate_panel_slide_fade(
         self,
         panel: QWidget,
@@ -627,10 +656,11 @@ class MainWindow(QMainWindow):
             s = self.main_splitter.sizes()
             sidebar_w = s[0] if s else 280
             total_w = sum(s)
+            content_w = max(50, total_w - sidebar_w - w)
             if panel_index == 2:  # preview
-                self.main_splitter.setSizes([sidebar_w, max(300, total_w - sidebar_w - w), w, 0])
+                self.main_splitter.setSizes([sidebar_w, content_w, w, 0])
             else:  # settings
-                self.main_splitter.setSizes([sidebar_w, max(300, total_w - sidebar_w - w), 0, w])
+                self.main_splitter.setSizes([sidebar_w, content_w, 0, w])
 
         def on_finished():
             if not is_opening:
@@ -639,16 +669,19 @@ class MainWindow(QMainWindow):
                 s = self.main_splitter.sizes()
                 sidebar_w = s[0] if s else 280
                 total_w = sum(s)
-                self.main_splitter.setSizes([sidebar_w, total_w - sidebar_w, 0, 0])
+                self.main_splitter.setSizes([sidebar_w, max(50, total_w - sidebar_w), 0, 0])
             else:
                 panel.setFixedWidth(target_width)
                 s = self.main_splitter.sizes()
                 sidebar_w = s[0] if s else 280
                 total_w = sum(s)
+                content_w = max(50, total_w - sidebar_w - target_width)
                 if panel_index == 2:
-                    self.main_splitter.setSizes([sidebar_w, max(300, total_w - sidebar_w - target_width), target_width, 0])
+                    self.main_splitter.setSizes([sidebar_w, content_w, target_width, 0])
                 else:
-                    self.main_splitter.setSizes([sidebar_w, max(300, total_w - sidebar_w - target_width), 0, target_width])
+                    self.main_splitter.setSizes([sidebar_w, content_w, 0, target_width])
+                if panel.layout():
+                    panel.layout().activate()
             if on_complete:
                 on_complete()
 
@@ -674,10 +707,11 @@ class MainWindow(QMainWindow):
             self._hide_settings_panel()
         else:
             self._hide_preview_panel(immediate=True)
+            target_w = self._get_panel_target_width()
             self._animate_panel_slide_fade(
                 self.settings_panel,
                 self.settings_opacity,
-                target_width=320,
+                target_width=target_w,
                 target_opacity=1.0,
                 duration=200,
                 easing=QEasingCurve.Type.OutCubic,
@@ -698,7 +732,7 @@ class MainWindow(QMainWindow):
             sidebar_w = sizes[0] if sizes else 280
             preview_w = sizes[2] if len(sizes) > 2 else 0
             total_w = sum(sizes)
-            self.main_splitter.setSizes([sidebar_w, max(300, total_w - sidebar_w - preview_w), preview_w, 0])
+            self.main_splitter.setSizes([sidebar_w, max(50, total_w - sidebar_w - preview_w), preview_w, 0])
             return
 
         self._animate_panel_slide_fade(
@@ -719,11 +753,11 @@ class MainWindow(QMainWindow):
             right_p = sizes[2]
             right_s = sizes[3]
             total_w = sum(sizes)
-            content_w = max(300, total_w - sidebar_w - right_p - right_s)
+            content_w = max(50, total_w - sidebar_w - right_p - right_s)
             self.main_splitter.setSizes([sidebar_w, content_w, right_p, right_s])
 
     def _on_file_selected(self, file_model: Optional[IndexedFileModel]):
-        """Handle single-click selection on media file (opens persistent 320px right dock with slide+fade)."""
+        """Handle single-click selection on media file (opens persistent right dock with slide+fade)."""
         if not file_model:
             self._hide_preview_panel()
             return
@@ -735,10 +769,11 @@ class MainWindow(QMainWindow):
         sizes = self.main_splitter.sizes()
         is_open = (len(sizes) > 2 and sizes[2] > 0)
         if not is_open:
+            target_w = self._get_panel_target_width()
             self._animate_panel_slide_fade(
                 self.preview_panel,
                 self.preview_opacity,
-                target_width=320,
+                target_width=target_w,
                 target_opacity=1.0,
                 duration=200,
                 easing=QEasingCurve.Type.OutCubic,
@@ -755,10 +790,11 @@ class MainWindow(QMainWindow):
                 self.media_browser.clear_selection()
         else:
             self._hide_settings_panel(immediate=True)
+            target_w = self._get_panel_target_width()
             self._animate_panel_slide_fade(
                 self.preview_panel,
                 self.preview_opacity,
-                target_width=320,
+                target_width=target_w,
                 target_opacity=1.0,
                 duration=200,
                 easing=QEasingCurve.Type.OutCubic,
@@ -779,7 +815,7 @@ class MainWindow(QMainWindow):
             sidebar_w = sizes[0] if sizes else 280
             settings_w = sizes[3] if len(sizes) > 3 else 0
             total_w = sum(sizes)
-            self.main_splitter.setSizes([sidebar_w, max(300, total_w - sidebar_w - settings_w), 0, settings_w])
+            self.main_splitter.setSizes([sidebar_w, max(50, total_w - sidebar_w - settings_w), 0, settings_w])
             return
 
         self._animate_panel_slide_fade(

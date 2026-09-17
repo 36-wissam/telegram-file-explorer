@@ -47,6 +47,10 @@ class ThemeManager(QObject):
         super().__init__()
         self.settings = QSettings("TelegramFileExplorer", "Appearance")
         self._current_theme_mode = self.settings.value("theme_mode", "system", type=str)
+        self._qss_cache = {
+            "dark": self.generate_qss(DARK_TOKENS),
+            "light": self.generate_qss(LIGHT_TOKENS),
+        }
 
     def get_current_language(self) -> str:
         """Get saved language preference, defaulting to English."""
@@ -117,7 +121,13 @@ class ThemeManager(QObject):
         self.settings.setValue("theme_mode", mode)
         
         tokens = self.get_active_tokens()
-        qss = self.generate_qss(tokens)
+        theme_key = "light" if tokens == LIGHT_TOKENS else "dark"
+        if not hasattr(self, "_qss_cache"):
+            self._qss_cache = {
+                "dark": self.generate_qss(DARK_TOKENS),
+                "light": self.generate_qss(LIGHT_TOKENS),
+            }
+        qss = self._qss_cache.get(theme_key, self.generate_qss(tokens))
         
         app = QApplication.instance()
         if app:
@@ -137,7 +147,7 @@ class ThemeManager(QObject):
     def generate_qss(self, tokens: dict) -> str:
         # Build complete, beautiful, clean QSS adhering strictly to design system rules
         qss = f"""
-        * {{
+        QWidget {{
             font-family: "Inter", "Cairo", "IBM Plex Sans Arabic", "Segoe UI", -apple-system, BlinkMacSystemFont, Arial, sans-serif;
             color: {tokens["text_primary"]};
         }}
@@ -225,6 +235,21 @@ class ThemeManager(QObject):
         }}
 
         /* Segmented pill controls */
+        QPushButton#segmentedItemButton {{
+            background: transparent;
+            border: none;
+            color: {tokens["text_secondary"]};
+            font-weight: 400;
+            padding: 2px 4px;
+        }}
+        QPushButton#segmentedItemButton:checked {{
+            color: {tokens["accent"]};
+            font-weight: 600;
+        }}
+        QPushButton#segmentedItemButton:hover:!checked {{
+            color: {tokens["text_primary"]};
+        }}
+
         QRadioButton[type="pill"] {{
             background-color: transparent;
             color: {tokens["text_secondary"]};
@@ -308,6 +333,85 @@ class ThemeManager(QObject):
             font-size: 11px;
             font-weight: 400;
             color: {tokens["text_tertiary"]};
+        }}
+
+        /* Main Window Canvas & Splitters */
+        QWidget#workspacePage, QWidget#welcomePage {{
+            background-color: {tokens["bg_base"]};
+        }}
+        QFrame#welcomeCard {{
+            background-color: {tokens["bg_surface"]};
+            border: 1px solid {tokens["border"]};
+            border-radius: 12px;
+            padding: 24px;
+        }}
+        QSplitter::handle {{
+            background-color: {tokens["border"]};
+            width: 1px;
+        }}
+        QLabel#statusFilesIndicator {{
+            color: {tokens["text_secondary"]};
+            font-size: 11px;
+            padding: 0 10px;
+            font-weight: 500;
+        }}
+
+        /* Chat List Widget */
+        ChatListWidget {{
+            background-color: {tokens["bg_surface"]};
+            border-right: 1px solid {tokens["border"]};
+        }}
+        QLineEdit#chatSearchInput {{
+            background-color: {tokens["bg_surface_2"]};
+            border: 1px solid {tokens["border"]};
+            border-radius: 6px;
+            color: {tokens["text_primary"]};
+            padding: 0 10px;
+        }}
+        QLineEdit#chatSearchInput:focus {{
+            border-color: {tokens["accent"]};
+        }}
+
+        /* Media Browser */
+        QFrame#browserTopBar {{
+            background-color: {tokens["bg_base"]};
+            border-bottom: 1px solid {tokens["border"]};
+        }}
+
+        /* Preview Panel */
+        QFrame#previewPanel {{
+            background-color: {tokens["bg_surface"]};
+            border-left: 1px solid {tokens["border"]};
+        }}
+        QFrame#previewThumbBox {{
+            background-color: {tokens["bg_surface_2"]};
+            border: 1px solid {tokens["border"]};
+            border-radius: 10px;
+        }}
+        QFrame#previewDivider {{
+            background-color: {tokens["border"]};
+            border: none;
+        }}
+
+        /* Settings Panel & Cards */
+        QFrame#settingsPanel {{
+            background-color: {tokens["bg_surface"]};
+            border-left: 1px solid {tokens["border"]};
+        }}
+        QFrame#settingsCard {{
+            background-color: {tokens["bg_surface_2"]};
+            border: 1px solid {tokens["border"]};
+            border-radius: 10px;
+        }}
+        QLabel#settingsHeader {{
+            color: {tokens["text_secondary"]};
+            font-size: 14px;
+            font-weight: 600;
+        }}
+        QFrame#stepperFrame {{
+            background-color: {tokens["bg_surface"]};
+            border: 1px solid {tokens["border"]};
+            border-radius: 6px;
         }}
         """
         return qss

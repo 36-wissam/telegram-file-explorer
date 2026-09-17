@@ -146,11 +146,19 @@ class DownloadManager(QObject):
 
     async def _execute_download(self, task: DownloadTask):
         """Asynchronously perform the download via Telethon."""
+        if task.cancel_event.is_set():
+            task.status = DownloadStatus.CANCELLED
+            return
+
         client = self.client_manager.client
         if not client or not client.is_connected():
             task.status = DownloadStatus.FAILED
             task.error_message = "Telegram client is not connected."
             self.task_failed.emit(task)
+            return
+
+        if task.cancel_event.is_set():
+            task.status = DownloadStatus.CANCELLED
             return
 
         task.status = DownloadStatus.DOWNLOADING
@@ -213,6 +221,10 @@ class DownloadManager(QObject):
             self.task_updated.emit(task)
 
         except Exception as e:
+            if task.cancel_event.is_set():
+                task.status = DownloadStatus.CANCELLED
+                self.task_updated.emit(task)
+                return
             logger.error("Download failed for %s: %s", task.filename, e)
             task.status = DownloadStatus.FAILED
             task.error_message = str(e)

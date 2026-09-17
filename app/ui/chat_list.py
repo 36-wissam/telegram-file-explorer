@@ -288,24 +288,11 @@ class ChatListWidget(QWidget):
 
         # Search Input
         self.search_input = QLineEdit()
+        self.search_input.setObjectName("chatSearchInput")
         self.search_input.setPlaceholderText("Search chats...")
         self.search_input.setClearButtonEnabled(True)
         self.search_input.setFixedHeight(36)
         self.search_input.setFont(get_body_font("Search"))
-        self.search_input.setStyleSheet(
-            f"""
-            QLineEdit {{
-                background-color: {tokens['bg_surface_2']};
-                border: 1px solid {tokens['border']};
-                border-radius: 6px;
-                color: {tokens['text_primary']};
-                padding: 0 10px;
-            }}
-            QLineEdit:focus {{
-                border-color: {tokens['accent']};
-            }}
-            """
-        )
         self.search_input.textChanged.connect(self._apply_filter)
         exp_layout.addWidget(self.search_input)
 
@@ -428,36 +415,15 @@ class ChatListWidget(QWidget):
         self.mode_stack.addWidget(self.rail_container)
 
     def _apply_theme_styles(self, tokens: dict):
-        self.setStyleSheet(
-            f"""
-            ChatListWidget {{
-                background-color: {tokens['bg_surface']};
-                border-right: 1px solid {tokens['border']};
-            }}
-            """
-        )
+        pass
 
     def _on_theme_changed(self, tokens: dict):
-        self._apply_theme_styles(tokens)
         self.btn_collapse.setIcon(get_icon("chevron_left", color=tokens["text_secondary"], size=16))
         self.btn_expand.setIcon(get_icon("chevron_right", color=tokens["text_secondary"], size=14))
         self.btn_settings_rail.setIcon(get_icon("settings", color=tokens["text_secondary"], size=20))
         self.btn_settings_expanded.setIcon(get_icon("settings", color=tokens["text_secondary"], size=18))
-        self.search_input.setStyleSheet(
-            f"""
-            QLineEdit {{
-                background-color: {tokens['bg_surface_2']};
-                border: 1px solid {tokens['border']};
-                border-radius: 6px;
-                color: {tokens['text_primary']};
-                padding: 0 10px;
-            }}
-            QLineEdit:focus {{
-                border-color: {tokens['accent']};
-            }}
-            """
-        )
-        self._apply_filter()
+        self.list_widget.viewport().update()
+        self.rail_scroll.viewport().update()
 
     def _on_language_changed(self, lang: str):
         if lang == "ar":

@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -49,19 +50,11 @@ from .theme_manager import DARK_TOKENS, LIGHT_TOKENS, theme_manager
 logger = get_logger("ui.settings_panel")
 
 
-def _create_section_card(tokens: dict) -> QFrame:
+def _create_section_card(tokens: Optional[dict] = None) -> QFrame:
     """Create a bounded section card conforming to the 4px design scale."""
     card = QFrame()
     card.setObjectName("settingsCard")
-    card.setStyleSheet(
-        f"""
-        QFrame#settingsCard {{
-            background-color: {tokens['bg_surface_2']};
-            border: 1px solid {tokens['border']};
-            border-radius: 10px;
-        }}
-        """
-    )
+    card.setMinimumWidth(0)
     return card
 
 
@@ -79,10 +72,13 @@ class SettingsPanel(QFrame):
     def __init__(self, repo: Optional[DatabaseRepository] = None, parent=None):
         super().__init__(parent)
         self.repo = repo or DatabaseRepository()
-        self.setFixedWidth(320)
         self.setObjectName("settingsPanel")
+        self.setMinimumWidth(280)
+        self.setMaximumWidth(340)
+        self.resize(320, 600)
 
         self.app_settings = QSettings("TelegramFileExplorer", "AppSettings")
+        self._cached_cache_mb: float = 0.0
 
         # Saved state for revert-on-close functionality
         self._saved_theme = theme_manager.current_theme_mode
@@ -93,17 +89,20 @@ class SettingsPanel(QFrame):
         self._pending_concurrency = getattr(settings, "max_concurrent_downloads", 3)
 
         self._init_ui()
-        self._refresh_cache_size()
+        self._refresh_cache_size(scan_disk=True)
         theme_manager.theme_changed.connect(self._on_theme_changed)
         theme_manager.language_changed.connect(self._on_language_changed)
+
+    def sizeHint(self) -> QSize:
+        return QSize(320, 600)
 
     def _init_ui(self):
         tokens = theme_manager.get_active_tokens()
         self._apply_panel_style(tokens)
 
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(16, 16, 16, 16)
-        main_layout.setSpacing(12)
+        main_layout.setContentsMargins(10, 12, 10, 12)
+        main_layout.setSpacing(10)
 
         # Header Row: Title "Settings" + Close 'x' button
         header_row = QHBoxLayout()
@@ -135,23 +134,23 @@ class SettingsPanel(QFrame):
         scroll_content.setStyleSheet("background: transparent;")
         self.c_layout = QVBoxLayout(scroll_content)
         self.c_layout.setContentsMargins(0, 0, 0, 0)
-        self.c_layout.setSpacing(16)  # 16px gap between section groups
+        self.c_layout.setSpacing(12)  # 12px gap between section groups
 
         # ==========================================
         # 1. SECTION: Account
         # ==========================================
         account_section = QVBoxLayout()
-        account_section.setSpacing(8)
+        account_section.setSpacing(6)
 
         self.account_header = QLabel("Account")
+        self.account_header.setObjectName("settingsHeader")
         self.account_header.setFont(get_section_header_font("Account"))
-        self.account_header.setStyleSheet(f"color: {tokens['text_secondary']};")
         account_section.addWidget(self.account_header)
 
         self.account_card = _create_section_card(tokens)
         card_layout = QVBoxLayout(self.account_card)
-        card_layout.setContentsMargins(16, 16, 16, 16)
-        card_layout.setSpacing(12)
+        card_layout.setContentsMargins(12, 12, 12, 12)
+        card_layout.setSpacing(10)
 
         # Top row: Avatar + Name & Status
         user_row = QHBoxLayout()
@@ -211,16 +210,16 @@ class SettingsPanel(QFrame):
         # 2. SECTION: Theme
         # ==========================================
         theme_section = QVBoxLayout()
-        theme_section.setSpacing(8)
+        theme_section.setSpacing(6)
 
         self.theme_label = QLabel("Theme")
+        self.theme_label.setObjectName("settingsHeader")
         self.theme_label.setFont(get_section_header_font("Theme"))
-        self.theme_label.setStyleSheet(f"color: {tokens['text_secondary']};")
         theme_section.addWidget(self.theme_label)
 
         self.theme_card = _create_section_card(tokens)
         theme_card_layout = QVBoxLayout(self.theme_card)
-        theme_card_layout.setContentsMargins(12, 12, 12, 12)
+        theme_card_layout.setContentsMargins(10, 10, 10, 10)
 
         theme_options = [("System", "system"), ("Light", "light"), ("Dark", "dark")]
         self.theme_segmented = AnimatedSegmentedControl(theme_options, self._pending_theme)
@@ -244,22 +243,24 @@ class SettingsPanel(QFrame):
         # 3. SECTION: Download Location
         # ==========================================
         dl_section = QVBoxLayout()
-        dl_section.setSpacing(8)
+        dl_section.setSpacing(6)
 
         self.dl_label = QLabel("Download Location")
+        self.dl_label.setObjectName("settingsHeader")
         self.dl_label.setFont(get_section_header_font("Download Location"))
-        self.dl_label.setStyleSheet(f"color: {tokens['text_secondary']};")
         dl_section.addWidget(self.dl_label)
 
         self.dl_card = _create_section_card(tokens)
         dl_card_layout = QHBoxLayout(self.dl_card)
-        dl_card_layout.setContentsMargins(12, 12, 12, 12)
+        dl_card_layout.setContentsMargins(10, 10, 10, 10)
         dl_card_layout.setSpacing(8)
 
         self.dl_path_input = QLineEdit(self._pending_download_dir)
         self.dl_path_input.setReadOnly(True)
         self.dl_path_input.setFixedHeight(34)
         self.dl_path_input.setFont(get_secondary_font())
+        self.dl_path_input.setMinimumWidth(0)
+        self.dl_path_input.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.dl_path_input.setStyleSheet(
             f"""
             QLineEdit {{
@@ -289,28 +290,31 @@ class SettingsPanel(QFrame):
         # 4. SECTION: Cache & Storage
         # ==========================================
         cache_section = QVBoxLayout()
-        cache_section.setSpacing(8)
+        cache_section.setSpacing(6)
 
         self.cache_header = QLabel("Cache & Storage")
+        self.cache_header.setObjectName("settingsHeader")
         self.cache_header.setFont(get_section_header_font("Cache"))
-        self.cache_header.setStyleSheet(f"color: {tokens['text_secondary']};")
         cache_section.addWidget(self.cache_header)
 
         self.cache_card = _create_section_card(tokens)
         cache_card_layout = QHBoxLayout(self.cache_card)
-        cache_card_layout.setContentsMargins(16, 12, 16, 12)
-        cache_card_layout.setSpacing(12)
+        cache_card_layout.setContentsMargins(10, 8, 10, 8)
+        cache_card_layout.setSpacing(6)
 
         self.cache_size_label = QLabel("Cache (الذاكرة المؤقتة): 0 MB")
-        self.cache_size_label.setFont(get_body_font("Cache"))
+        self.cache_size_label.setFont(get_caption_font())
         self.cache_size_label.setStyleSheet(f"color: {tokens['text_primary']}; font-weight: 500;")
+        self.cache_size_label.setMinimumWidth(0)
+        self.cache_size_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        self.cache_size_label.setWordWrap(False)
         cache_card_layout.addWidget(self.cache_size_label)
 
-        cache_card_layout.addStretch()
-
         self.btn_clear_cache = AnimatedHoverButton("Clear Cache", border_radius=6)
-        self.btn_clear_cache.setFixedHeight(32)
-        self.btn_clear_cache.setFont(get_caption_font("Clear Cache"))
+        self.btn_clear_cache.setFixedHeight(28)
+        self.btn_clear_cache.setMinimumWidth(0)
+        self.btn_clear_cache.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
+        self.btn_clear_cache.setFont(get_caption_font())
         self.btn_clear_cache.clicked.connect(self._on_clear_cache)
         cache_card_layout.addWidget(self.btn_clear_cache)
 
@@ -321,58 +325,51 @@ class SettingsPanel(QFrame):
         # 5. SECTION: Max Concurrent Downloads (Stepper)
         # ==========================================
         concurrent_section = QVBoxLayout()
-        concurrent_section.setSpacing(8)
+        concurrent_section.setSpacing(6)
 
         self.concurrent_header = QLabel("Performance")
+        self.concurrent_header.setObjectName("settingsHeader")
         self.concurrent_header.setFont(get_section_header_font("Performance"))
-        self.concurrent_header.setStyleSheet(f"color: {tokens['text_secondary']};")
         concurrent_section.addWidget(self.concurrent_header)
 
         self.concurrent_card = _create_section_card(tokens)
         concurrent_card_layout = QHBoxLayout(self.concurrent_card)
-        concurrent_card_layout.setContentsMargins(16, 12, 16, 12)
-        concurrent_card_layout.setSpacing(12)
+        concurrent_card_layout.setContentsMargins(10, 8, 10, 8)
+        concurrent_card_layout.setSpacing(6)
 
         self.concurrent_label = QLabel("Concurrent Downloads")
-        self.concurrent_label.setFont(get_body_font("Concurrent Downloads"))
+        self.concurrent_label.setFont(get_secondary_font())
         self.concurrent_label.setStyleSheet(f"color: {tokens['text_primary']}; font-weight: 500;")
+        self.concurrent_label.setMinimumWidth(0)
+        self.concurrent_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         concurrent_card_layout.addWidget(self.concurrent_label)
-
-        concurrent_card_layout.addStretch()
 
         # Stepper control pill: [-]  3  [+]
         self.stepper_frame = QFrame()
-        self.stepper_frame.setStyleSheet(
-            f"""
-            QFrame {{
-                background-color: {tokens['bg_surface']};
-                border: 1px solid {tokens['border']};
-                border-radius: 6px;
-            }}
-            """
-        )
+        self.stepper_frame.setObjectName("stepperFrame")
+        self.stepper_frame.setFixedSize(76, 28)
         stepper_layout = QHBoxLayout(self.stepper_frame)
-        stepper_layout.setContentsMargins(2, 2, 2, 2)
+        stepper_layout.setContentsMargins(1, 1, 1, 1)
         stepper_layout.setSpacing(0)
 
         self.btn_minus = QPushButton("-")
-        self.btn_minus.setFixedSize(26, 26)
-        self.btn_minus.setFont(QFont("Inter", 13, QFont.Bold))
+        self.btn_minus.setFixedSize(22, 24)
+        self.btn_minus.setFont(QFont("Inter", 12, QFont.Bold))
         self.btn_minus.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_minus.setStyleSheet(f"background: transparent; border: none; color: {tokens['text_primary']};")
         self.btn_minus.clicked.connect(self._decrement_concurrent)
         stepper_layout.addWidget(self.btn_minus)
 
         self.concurrent_val_label = QLabel(str(self._pending_concurrency))
-        self.concurrent_val_label.setFixedWidth(28)
+        self.concurrent_val_label.setFixedWidth(22)
         self.concurrent_val_label.setAlignment(Qt.AlignCenter)
-        self.concurrent_val_label.setFont(QFont("Inter", 13, QFont.Bold))
+        self.concurrent_val_label.setFont(QFont("Inter", 12, QFont.Bold))
         self.concurrent_val_label.setStyleSheet(f"background: transparent; border: none; color: {tokens['text_primary']};")
         stepper_layout.addWidget(self.concurrent_val_label)
 
         self.btn_plus = QPushButton("+")
-        self.btn_plus.setFixedSize(26, 26)
-        self.btn_plus.setFont(QFont("Inter", 13, QFont.Bold))
+        self.btn_plus.setFixedSize(22, 24)
+        self.btn_plus.setFont(QFont("Inter", 12, QFont.Bold))
         self.btn_plus.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_plus.setStyleSheet(f"background: transparent; border: none; color: {tokens['text_primary']};")
         self.btn_plus.clicked.connect(self._increment_concurrent)
@@ -386,16 +383,16 @@ class SettingsPanel(QFrame):
         # 6. SECTION: Language
         # ==========================================
         lang_section = QVBoxLayout()
-        lang_section.setSpacing(8)
+        lang_section.setSpacing(6)
 
         self.lang_label = QLabel("Language")
+        self.lang_label.setObjectName("settingsHeader")
         self.lang_label.setFont(get_section_header_font("Language"))
-        self.lang_label.setStyleSheet(f"color: {tokens['text_secondary']};")
         lang_section.addWidget(self.lang_label)
 
         self.lang_card = _create_section_card(tokens)
         lang_card_layout = QVBoxLayout(self.lang_card)
-        lang_card_layout.setContentsMargins(12, 12, 12, 12)
+        lang_card_layout.setContentsMargins(10, 10, 10, 10)
 
         lang_options = [("English", "en"), ("العربية", "ar")]
         self.lang_segmented = AnimatedSegmentedControl(lang_options, self._pending_language)
@@ -412,11 +409,11 @@ class SettingsPanel(QFrame):
         # 7. SECTION: Tools
         # ==========================================
         tools_section = QVBoxLayout()
-        tools_section.setSpacing(8)
+        tools_section.setSpacing(6)
 
         self.tools_label = QLabel("Tools")
+        self.tools_label.setObjectName("settingsHeader")
         self.tools_label.setFont(get_section_header_font("Tools"))
-        self.tools_label.setStyleSheet(f"color: {tokens['text_secondary']};")
         tools_section.addWidget(self.tools_label)
 
         self.tools_card = _create_section_card(tokens)
@@ -453,16 +450,16 @@ class SettingsPanel(QFrame):
         # 8. SECTION: About
         # ==========================================
         about_section = QVBoxLayout()
-        about_section.setSpacing(8)
+        about_section.setSpacing(6)
 
         self.about_header = QLabel("About")
+        self.about_header.setObjectName("settingsHeader")
         self.about_header.setFont(get_section_header_font("About"))
-        self.about_header.setStyleSheet(f"color: {tokens['text_secondary']};")
         about_section.addWidget(self.about_header)
 
         self.about_card = _create_section_card(tokens)
         about_card_layout = QVBoxLayout(self.about_card)
-        about_card_layout.setContentsMargins(16, 14, 16, 14)
+        about_card_layout.setContentsMargins(12, 12, 12, 12)
         about_card_layout.setSpacing(4)
 
         self.about_title = QLabel("Telegram File Explorer")
@@ -523,57 +520,16 @@ class SettingsPanel(QFrame):
         self.lbl_status_badge.setText("Connected")
 
     def _on_theme_changed(self, tokens: dict):
-        self._apply_panel_style(tokens)
         self.btn_close.setIcon(get_icon("x", color=tokens["text_secondary"], size=16))
-        self.header_title.setStyleSheet(f"color: {tokens['text_primary']};")
-
-        # Update card backgrounds
-        card_style = f"background-color: {tokens['bg_surface_2']}; border: 1px solid {tokens['border']}; border-radius: 10px;"
-        for card in [
-            self.account_card,
-            self.theme_card,
-            self.dl_card,
-            self.cache_card,
-            self.concurrent_card,
-            self.lang_card,
-            self.tools_card,
-            self.about_card,
-        ]:
-            card.setStyleSheet(f"QFrame#settingsCard {{ {card_style} }}")
-
-        # Update headers
-        for h in [
-            self.account_header,
-            self.theme_label,
-            self.dl_label,
-            self.cache_header,
-            self.concurrent_header,
-            self.lang_label,
-            self.tools_label,
-            self.about_header,
-        ]:
-            h.setStyleSheet(f"color: {tokens['text_secondary']};")
-
-        # Update controls
-        self.stepper_frame.setStyleSheet(
-            f"background-color: {tokens['bg_surface']}; border: 1px solid {tokens['border']}; border-radius: 6px;"
-        )
-        self.btn_minus.setStyleSheet(f"background: transparent; border: none; color: {tokens['text_primary']};")
-        self.btn_plus.setStyleSheet(f"background: transparent; border: none; color: {tokens['text_primary']};")
-        self.concurrent_val_label.setStyleSheet(f"background: transparent; border: none; color: {tokens['text_primary']};")
-
-        self.dl_path_input.setStyleSheet(
-            f"background-color: {tokens['bg_base']}; border: 1px solid {tokens['border']}; border-radius: 6px; color: {tokens['text_primary']}; padding: 0 10px;"
-        )
         self.btn_sign_out.ghost_color = tokens["danger"]
+        self.btn_sign_out.update()
         self.btn_browse.setIcon(get_icon("folder", color=tokens["text_secondary"], size=16))
         self.btn_indexing_manager.setIcon(get_icon("hard_drive", color=tokens["text_secondary"], size=16))
         self.btn_reindex.setIcon(get_icon("refresh_cw", color=tokens["text_secondary"], size=16))
-
-        self.cache_size_label.setStyleSheet(f"color: {tokens['text_primary']}; font-weight: 500;")
-        self.concurrent_label.setStyleSheet(f"color: {tokens['text_primary']}; font-weight: 500;")
-        self.about_title.setStyleSheet(f"color: {tokens['text_primary']}; font-weight: 600;")
-        self.desc_label.setStyleSheet(f"color: {tokens['text_secondary']};")
+        if hasattr(self, "theme_segmented"):
+            self.theme_segmented._update_button_visuals()
+        if hasattr(self, "lang_segmented"):
+            self.lang_segmented._update_button_visuals()
 
     def _on_theme_preview(self, mode: str):
         self._pending_theme = mode
@@ -616,7 +572,7 @@ class SettingsPanel(QFrame):
         self.btn_apply.setText(tr("apply_button", lang))
 
         self.setLayoutDirection(Qt.LayoutDirection.RightToLeft if is_ar else Qt.LayoutDirection.LeftToRight)
-        self._refresh_cache_size()
+        self._refresh_cache_size(scan_disk=False)
 
     def _on_browse_download_path(self):
         chosen_dir = QFileDialog.getExistingDirectory(
@@ -629,14 +585,20 @@ class SettingsPanel(QFrame):
             self._pending_download_dir = new_dir
             self.dl_path_input.setText(new_dir)
 
-    def _refresh_cache_size(self):
-        cache_dir = settings.data_dir / "cache"
-        total_bytes = 0
-        if cache_dir.exists():
-            for f in cache_dir.rglob("*"):
-                if f.is_file():
-                    total_bytes += f.stat().st_size
-        mb = total_bytes / (1024 * 1024)
+    def _refresh_cache_size(self, scan_disk: bool = False):
+        if scan_disk:
+            cache_dir = settings.data_dir / "cache"
+            total_bytes = 0
+            if cache_dir.exists():
+                try:
+                    for f in cache_dir.rglob("*"):
+                        if f.is_file():
+                            total_bytes += f.stat().st_size
+                except Exception:
+                    pass
+            self._cached_cache_mb = total_bytes / (1024 * 1024)
+
+        mb = self._cached_cache_mb
         is_ar = (self._pending_language == "ar")
         prefix = "الذاكرة المؤقتة:" if is_ar else "Cache (الذاكرة المؤقتة):"
         if mb >= 1024:
@@ -659,7 +621,7 @@ class SettingsPanel(QFrame):
                 cache_dir.mkdir(parents=True, exist_ok=True)
             from ..services.image_loader import thumbnail_manager
             thumbnail_manager.clear_memory_cache()
-            self._refresh_cache_size()
+            self._refresh_cache_size(scan_disk=True)
 
     def _increment_concurrent(self):
         if self._pending_concurrency < 8:

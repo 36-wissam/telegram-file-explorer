@@ -113,16 +113,8 @@ class PreviewPanel(QFrame):
         thumb_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.thumb_box = QFrame()
+        self.thumb_box.setObjectName("previewThumbBox")
         self.thumb_box.setFixedSize(96, 96)
-        self.thumb_box.setStyleSheet(
-            f"""
-            QFrame {{
-                background-color: {tokens['bg_surface_2']};
-                border: 1px solid {tokens['border']};
-                border-radius: 10px;
-            }}
-            """
-        )
         t_box_layout = QVBoxLayout(self.thumb_box)
         t_box_layout.setContentsMargins(0, 0, 0, 0)
         t_box_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -177,8 +169,8 @@ class PreviewPanel(QFrame):
 
         # 5. Divider Line (1px solid var(--border))
         self.divider = QFrame()
+        self.divider.setObjectName("previewDivider")
         self.divider.setFixedHeight(1)
-        self.divider.setStyleSheet(f"background-color: {tokens['border']}; border: none;")
         c_layout.addWidget(self.divider)
 
         # 6. Two full-width Primary / Secondary stacked buttons
@@ -209,24 +201,6 @@ class PreviewPanel(QFrame):
         layout.addWidget(scroll)
 
     def _on_theme_changed(self, tokens: dict):
-        self.setStyleSheet(
-            f"""
-            QFrame#previewPanel {{
-                background-color: {tokens['bg_surface']};
-                border-left: 1px solid {tokens['border']};
-            }}
-            """
-        )
-        self.thumb_box.setStyleSheet(
-            f"""
-            QFrame {{
-                background-color: {tokens['bg_surface_2']};
-                border: 1px solid {tokens['border']};
-                border-radius: 10px;
-            }}
-            """
-        )
-        self.divider.setStyleSheet(f"background-color: {tokens['border']}; border: none;")
         self.btn_close.setIcon(get_icon("x", color=tokens["text_secondary"], size=16))
         if self.current_file:
             self.set_file(self.current_file)

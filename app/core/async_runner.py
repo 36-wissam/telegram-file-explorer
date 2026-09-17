@@ -39,7 +39,10 @@ class AsyncRunner(QObject):
 
         qapp = QApplication.instance()
         if qapp is not None and threading.current_thread() is not threading.main_thread():
-            self._dispatch_signal.emit(func, arg)
+            try:
+                self._dispatch_signal.emit(func, arg)
+            except RuntimeError:
+                pass
         else:
             try:
                 func(arg)

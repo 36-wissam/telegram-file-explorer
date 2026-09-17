@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -181,10 +182,15 @@ class AnimatedSegmentedControl(QFrame):
 
         self.buttons: List[QPushButton] = []
         self._init_ui()
-        theme_manager.theme_changed.connect(lambda _: self.update())
+        theme_manager.theme_changed.connect(self._on_theme_changed)
+
+    def _on_theme_changed(self, _=None):
+        self._update_button_visuals()
+        self.update()
 
     def _init_ui(self):
         self.setFixedHeight(36)
+        self.setMinimumWidth(0)
         self.layout = QHBoxLayout(self)
         self.layout.setContentsMargins(3, 3, 3, 3)
         self.layout.setSpacing(2)
@@ -195,11 +201,18 @@ class AnimatedSegmentedControl(QFrame):
             btn.setCheckable(True)
             btn.setChecked(key == self._current_value)
             btn.setFont(get_body_font(label))
+            btn.setMinimumWidth(0)
+            btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn.setStyleSheet("background: transparent; border: none; padding: 4px 8px;")
             btn.clicked.connect(lambda checked=False, idx=i, k=key: self._on_item_clicked(idx, k))
-            self.layout.addWidget(btn)
+            self.layout.addWidget(btn, 1)
             self.buttons.append(btn)
+        self._update_button_visuals()
+
+    def _update_button_visuals(self):
+        for i, btn in enumerate(self.buttons):
+            btn.setChecked(i == self._target_index)
+        self.update()
 
     def _on_item_clicked(self, index: int, key: str):
         self._current_value = key
@@ -208,6 +221,7 @@ class AnimatedSegmentedControl(QFrame):
         for i, btn in enumerate(self.buttons):
             btn.setChecked(i == index)
 
+        self._update_button_visuals()
         self._anim.stop()
         self._anim.setStartValue(self._indicator_pos)
         self._anim.setEndValue(float(index))
@@ -227,6 +241,7 @@ class AnimatedSegmentedControl(QFrame):
                 for j, btn in enumerate(self.buttons):
                     btn.setChecked(j == i)
                 self._indicator_pos = float(i)
+                self._update_button_visuals()
                 self.update()
                 break
 
@@ -261,13 +276,6 @@ class AnimatedSegmentedControl(QFrame):
 
             # Accent-muted background
             painter.fillPath(pill_path, QColor(tokens["accent_muted"]))
-
-        # Text labels on buttons
-        for i, btn in enumerate(self.buttons):
-            is_active = (i == self._target_index)
-            color_str = tokens["accent"] if is_active else tokens["text_secondary"]
-            font_weight = 600 if is_active else 400
-            btn.setStyleSheet(f"background: transparent; border: none; color: {color_str}; font-weight: {font_weight};")
 
         painter.end()
         super().paintEvent(event)

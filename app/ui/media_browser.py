@@ -284,15 +284,8 @@ class ChatMediaBrowserWidget(QWidget):
         Right: Grid button, List button, Sun/Moon theme toggle
         """
         top_bar = QFrame(self)
+        top_bar.setObjectName("browserTopBar")
         top_bar.setFixedHeight(56)
-        top_bar.setStyleSheet(
-            f"""
-            QFrame {{
-                background-color: {tokens['bg_base']};
-                border-bottom: 1px solid {tokens['border']};
-            }}
-            """
-        )
         layout = QHBoxLayout(top_bar)
         layout.setContentsMargins(20, 8, 20, 8)
         layout.setSpacing(16)
@@ -420,11 +413,7 @@ class ChatMediaBrowserWidget(QWidget):
         theme_manager.toggle_theme()
 
     def _on_theme_changed(self, tokens: dict):
-        self.top_bar.setStyleSheet(f"background-color: {tokens['bg_base']}; border-bottom: 1px solid {tokens['border']};")
         self.empty_icon_label.setPixmap(get_pixmap("folder", color=tokens["text_tertiary"], size=34))
-        self.title_label.setStyleSheet(f"color: {tokens['text_primary']};")
-        self.count_label.setStyleSheet(f"color: {tokens['text_tertiary']};")
-        self.empty_title.setStyleSheet(f"color: {tokens['text_secondary']};")
         self._update_view_toggle_styles(tokens)
         self.grid_view.viewport().update()
         self.list_view.viewport().update()
