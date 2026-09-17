@@ -281,7 +281,9 @@ class MainWindow(QMainWindow):
     def open_indexing_manager(self, preselected_chat_id: Optional[int] = None):
         """Open the media indexing management dialog."""
         from .indexing_dialog import IndexingDialog
-        chats = self.chat_list_widget.chats
+        chats = []
+        if hasattr(self, "chat_list_widget"):
+            chats = getattr(self.chat_list_widget, "chats", getattr(self.chat_list_widget, "_all_chats", []))
         if not chats:
             db_chats = self.repo.get_chats()
             from ..telegram.chats import ChatType, TelegramChat

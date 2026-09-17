@@ -237,6 +237,11 @@ class ChatListWidget(QWidget):
         self.list_widget.itemClicked.connect(self._on_item_clicked)
         layout.addWidget(self.list_widget)
 
+    @property
+    def chats(self) -> List[TelegramChat]:
+        """Return the current full list of discovered chats."""
+        return self._all_chats
+
     def set_chats(self, chats: List[TelegramChat]):
         """Populate the list with discovered chats."""
         self._all_chats = chats
