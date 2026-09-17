@@ -605,10 +605,16 @@ class MainWindow(QMainWindow):
             panel._fade_anim.stop()
 
         is_opening = (target_width > 0)
+        sizes = self.main_splitter.sizes()
+        start_w = sizes[panel_index] if len(sizes) > panel_index else 0
+
         if is_opening:
             panel.show()
+            if start_w == 0:
+                opacity_effect.setOpacity(0.0)
 
-        start_w = panel.width() if panel.isVisible() else 0
+        start_opacity = opacity_effect.opacity()
+
         slide_anim = QVariantAnimation(panel)
         slide_anim.setDuration(duration)
         slide_anim.setEasingCurve(easing)
@@ -618,9 +624,9 @@ class MainWindow(QMainWindow):
         def on_step(val):
             w = int(val)
             panel.setFixedWidth(w)
-            sizes = self.main_splitter.sizes()
-            sidebar_w = sizes[0] if sizes else 280
-            total_w = sum(sizes)
+            s = self.main_splitter.sizes()
+            sidebar_w = s[0] if s else 280
+            total_w = sum(s)
             if panel_index == 2:  # preview
                 self.main_splitter.setSizes([sidebar_w, max(300, total_w - sidebar_w - w), w, 0])
             else:  # settings
@@ -630,10 +636,19 @@ class MainWindow(QMainWindow):
             if not is_opening:
                 panel.hide()
                 panel.setFixedWidth(320)
-                sizes = self.main_splitter.sizes()
-                sidebar_w = sizes[0] if sizes else 280
-                total_w = sum(sizes)
+                s = self.main_splitter.sizes()
+                sidebar_w = s[0] if s else 280
+                total_w = sum(s)
                 self.main_splitter.setSizes([sidebar_w, total_w - sidebar_w, 0, 0])
+            else:
+                panel.setFixedWidth(target_width)
+                s = self.main_splitter.sizes()
+                sidebar_w = s[0] if s else 280
+                total_w = sum(s)
+                if panel_index == 2:
+                    self.main_splitter.setSizes([sidebar_w, max(300, total_w - sidebar_w - target_width), target_width, 0])
+                else:
+                    self.main_splitter.setSizes([sidebar_w, max(300, total_w - sidebar_w - target_width), 0, target_width])
             if on_complete:
                 on_complete()
 
@@ -644,7 +659,7 @@ class MainWindow(QMainWindow):
         fade_anim = QPropertyAnimation(opacity_effect, b"opacity", panel)
         fade_anim.setDuration(duration)
         fade_anim.setEasingCurve(easing)
-        fade_anim.setStartValue(opacity_effect.opacity())
+        fade_anim.setStartValue(start_opacity)
         fade_anim.setEndValue(target_opacity)
         panel._fade_anim = fade_anim
 
@@ -653,7 +668,9 @@ class MainWindow(QMainWindow):
 
     def _toggle_settings_panel(self):
         """Toggle right-docked Settings panel with 200ms OutCubic open / 180ms InCubic close slide+fade."""
-        if self.settings_panel.isVisible() and self.settings_panel.width() > 0:
+        sizes = self.main_splitter.sizes()
+        is_open = (len(sizes) > 3 and sizes[3] > 0)
+        if is_open:
             self._hide_settings_panel()
         else:
             self._hide_preview_panel(immediate=True)
@@ -679,8 +696,9 @@ class MainWindow(QMainWindow):
             self.settings_panel.setFixedWidth(320)
             sizes = self.main_splitter.sizes()
             sidebar_w = sizes[0] if sizes else 280
+            preview_w = sizes[2] if len(sizes) > 2 else 0
             total_w = sum(sizes)
-            self.main_splitter.setSizes([sidebar_w, total_w - sidebar_w, 0, 0])
+            self.main_splitter.setSizes([sidebar_w, max(300, total_w - sidebar_w - preview_w), preview_w, 0])
             return
 
         self._animate_panel_slide_fade(
@@ -714,7 +732,9 @@ class MainWindow(QMainWindow):
         self._hide_settings_panel(immediate=True)
         self.preview_panel.set_file(file_model)
 
-        if not self.preview_panel.isVisible() or self.preview_panel.width() == 0:
+        sizes = self.main_splitter.sizes()
+        is_open = (len(sizes) > 2 and sizes[2] > 0)
+        if not is_open:
             self._animate_panel_slide_fade(
                 self.preview_panel,
                 self.preview_opacity,
@@ -727,7 +747,9 @@ class MainWindow(QMainWindow):
 
     def _toggle_preview_panel(self):
         """Toggle right-docked preview inspector panel with slide+fade."""
-        if self.preview_panel.isVisible() and self.preview_panel.width() > 0:
+        sizes = self.main_splitter.sizes()
+        is_open = (len(sizes) > 2 and sizes[2] > 0)
+        if is_open:
             self._hide_preview_panel()
             if hasattr(self, "media_browser"):
                 self.media_browser.clear_selection()
@@ -755,8 +777,9 @@ class MainWindow(QMainWindow):
             self.preview_panel.setFixedWidth(320)
             sizes = self.main_splitter.sizes()
             sidebar_w = sizes[0] if sizes else 280
+            settings_w = sizes[3] if len(sizes) > 3 else 0
             total_w = sum(sizes)
-            self.main_splitter.setSizes([sidebar_w, total_w - sidebar_w, 0, 0])
+            self.main_splitter.setSizes([sidebar_w, max(300, total_w - sidebar_w - settings_w), 0, settings_w])
             return
 
         self._animate_panel_slide_fade(

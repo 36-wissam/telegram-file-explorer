@@ -229,6 +229,7 @@ class MediaIndexerService:
         batch_size: int = 50,
         progress_callback: Optional[Callable[[int, int], None]] = None,
         batch_discovered_callback: Optional[Callable[[List[MediaFileMetadata]], None]] = None,
+        batch_callback: Optional[Callable[[List[MediaFileMetadata]], None]] = None,
         pause_event: Optional[asyncio.Event] = None,
         cancel_check: Optional[Callable[[], bool]] = None,
     ) -> int:
@@ -237,6 +238,8 @@ class MediaIndexerService:
         Supports safe resumption, pause/resume, and cooperative cancellation.
         Does NOT download files.
         """
+        if batch_callback and not batch_discovered_callback:
+            batch_discovered_callback = batch_callback
         client = self.manager.client
         if not client or not client.is_connected():
             raise RuntimeError("Telegram client is not connected.")
