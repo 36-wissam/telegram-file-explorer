@@ -31,14 +31,14 @@ from .filter_bar import AdvancedFilterBar, AdvancedFilterCriteria
 logger = get_logger("ui.file_explorer")
 
 CATEGORY_ICONS = {
-    "ALL": "📁",
-    "IMAGE": "🖼️",
-    "VIDEO": "🎬",
-    "AUDIO": "🎵",
-    "VOICE": "🎤",
-    "DOCUMENT": "📄",
-    "ARCHIVE": "📦",
-    "OTHER": "📎",
+    "ALL": "",
+    "IMAGE": "[IMG]",
+    "VIDEO": "[VID]",
+    "AUDIO": "[AUD]",
+    "VOICE": "[VOX]",
+    "DOCUMENT": "[DOC]",
+    "ARCHIVE": "[ZIP]",
+    "OTHER": "[FILE]",
 }
 
 
@@ -146,13 +146,13 @@ class FileExplorerWidget(QWidget):
         t_layout.addWidget(self.btn_status_pill)
 
         # Pill Button 3: Date Range Filter Pill
-        self.btn_date_pill = QPushButton("📅 All Dates ✖")
+        self.btn_date_pill = QPushButton("All Dates")
         self.btn_date_pill.setObjectName("filterPillButton")
         self.btn_date_pill.clicked.connect(self._toggle_filter_bar)
         t_layout.addWidget(self.btn_date_pill)
 
         # Pill Button 4: Filters Toggle Button
-        self.btn_toggle_filters = QPushButton("🔽 Filters")
+        self.btn_toggle_filters = QPushButton("Filters")
         self.btn_toggle_filters.setObjectName("filterPillButton")
         self.btn_toggle_filters.setCheckable(True)
         self.btn_toggle_filters.clicked.connect(self._toggle_filter_bar)
@@ -160,7 +160,7 @@ class FileExplorerWidget(QWidget):
 
         # Search Bar
         self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("🔍 Search files by name, caption, chat...")
+        self.search_input.setPlaceholderText("Search files by name, caption, chat...")
         self.search_input.setClearButtonEnabled(True)
         self.search_input.setFixedWidth(280)
         self.search_input.textChanged.connect(self._on_search_changed)
@@ -191,20 +191,20 @@ class FileExplorerWidget(QWidget):
         t_layout.addWidget(self.sort_combo)
 
         # Refresh Button
-        self.btn_refresh = QPushButton("🔄")
-        self.btn_refresh.setFixedSize(30, 30)
+        self.btn_refresh = QPushButton("Refresh")
         self.btn_refresh.setToolTip("Refresh file list")
         self.btn_refresh.setStyleSheet(
             """
             QPushButton {
-                background-color: #f1f5f9;
-                color: #64748b;
-                border: 1px solid #cbd5e1;
+                background-color: #27272A;
+                color: #F4F4F5;
+                border: 1px solid #3F3F46;
                 border-radius: 6px;
+                padding: 4px 10px;
+                font-size: 12px;
             }
             QPushButton:hover {
-                background-color: #e2e8f0;
-                color: #0f172a;
+                background-color: #3F3F46;
             }
             """
         )
@@ -234,7 +234,7 @@ class FileExplorerWidget(QWidget):
         overview_label.setStyleSheet("color: #94a3b8; font-size: 12px; font-weight: 500; padding: 4px 8px;")
         s_layout.addWidget(overview_label)
 
-        section_title = QLabel("📂 CATEGORIES ▾")
+        section_title = QLabel("CATEGORIES")
         section_title.setStyleSheet("color: #94a3b8; font-size: 11px; font-weight: bold; padding: 4px 8px;")
         s_layout.addWidget(section_title)
 
@@ -267,14 +267,14 @@ class FileExplorerWidget(QWidget):
         )
 
         categories = [
-            ("ALL", "📁 All Files"),
-            ("IMAGE", "🖼️ Images & Photos"),
-            ("VIDEO", "🎬 Videos & Clips"),
-            ("AUDIO", "🎵 Audio & Music"),
-            ("VOICE", "🎤 Voice Notes"),
-            ("DOCUMENT", "📄 Documents & PDFs"),
-            ("ARCHIVE", "📦 Archives & Zips"),
-            ("OTHER", "📎 Other Media"),
+            ("ALL", "All Files"),
+            ("IMAGE", "Images & Photos"),
+            ("VIDEO", "Videos & Clips"),
+            ("AUDIO", "Audio & Music"),
+            ("VOICE", "Voice Notes"),
+            ("DOCUMENT", "Documents & PDFs"),
+            ("ARCHIVE", "Archives & Zips"),
+            ("OTHER", "Other Media"),
         ]
 
         for code, label in categories:
@@ -362,7 +362,7 @@ class FileExplorerWidget(QWidget):
         empty_layout.setAlignment(Qt.AlignCenter)
         empty_layout.setSpacing(14)
 
-        self.empty_icon = QLabel("🔍")
+        self.empty_icon = QLabel("")
         self.empty_icon.setStyleSheet("font-size: 48px; background: transparent;")
         self.empty_icon.setAlignment(Qt.AlignCenter)
         empty_layout.addWidget(self.empty_icon)
@@ -423,7 +423,7 @@ class FileExplorerWidget(QWidget):
         dz_layout = QHBoxLayout(self.drop_zone)
         dz_layout.setAlignment(Qt.AlignCenter)
         dz_layout.setContentsMargins(8, 4, 8, 4)
-        dz_label = QLabel("☁  Drop, select or import files")
+        dz_label = QLabel("Drop, select or import files")
         dz_label.setStyleSheet("color: #64748b; font-size: 12px; font-weight: 500;")
         dz_layout.addWidget(dz_label)
         tc_layout.addWidget(self.drop_zone)
@@ -449,7 +449,7 @@ class FileExplorerWidget(QWidget):
         f_layout.addStretch()
 
         # Pagination Controls
-        self.btn_prev_page = QPushButton("◀ Previous")
+        self.btn_prev_page = QPushButton("Previous")
         self.btn_prev_page.setStyleSheet("padding: 4px 12px; font-size: 11px;")
         self.btn_prev_page.clicked.connect(self._prev_page)
         f_layout.addWidget(self.btn_prev_page)
@@ -458,7 +458,7 @@ class FileExplorerWidget(QWidget):
         self.page_label.setStyleSheet("color: #334155; font-size: 12px; font-weight: 600; padding: 0 8px;")
         f_layout.addWidget(self.page_label)
 
-        self.btn_next_page = QPushButton("Next ▶")
+        self.btn_next_page = QPushButton("Next")
         self.btn_next_page.setStyleSheet("padding: 4px 12px; font-size: 11px;")
         self.btn_next_page.clicked.connect(self._next_page)
         f_layout.addWidget(self.btn_next_page)
@@ -492,7 +492,7 @@ class FileExplorerWidget(QWidget):
             checked = not self.filter_bar.isVisible()
         self.filter_bar.setVisible(checked)
         self.btn_toggle_filters.setChecked(checked)
-        self.btn_toggle_filters.setText("🔼 Filters" if checked else "🔽 Filters")
+        self.btn_toggle_filters.setText("Filters")
 
     def _on_advanced_filters_changed(self, criteria: AdvancedFilterCriteria):
         """Respond to criteria changes from the AdvancedFilterBar."""
@@ -559,12 +559,12 @@ class FileExplorerWidget(QWidget):
                 or self._advanced_filters.start_date is not None
             )
             if has_active_filters:
-                self.empty_icon.setText("🔍")
+                self.empty_icon.setText("")
                 self.empty_title.setText("No Matching Files Found")
                 self.empty_desc.setText("No indexed files match your active search terms or filters.")
                 self.btn_clear_filters.setVisible(True)
             else:
-                self.empty_icon.setText("📂")
+                self.empty_icon.setText("")
                 self.empty_title.setText("No Indexed Files Yet")
                 self.empty_desc.setText("No files have been indexed from your Telegram chats yet. Open the Indexing Manager to scan and index your chats.")
                 self.btn_clear_filters.setVisible(False)
@@ -586,9 +586,9 @@ class FileExplorerWidget(QWidget):
             for row, file_item in enumerate(self._cached_files):
                 self.table.setRowHeight(row, 48)
 
-                # Filename with category icon
-                icon = CATEGORY_ICONS.get(file_item.media_type, "📎")
-                name_item = QTableWidgetItem(f"{icon}  {file_item.filename}")
+                icon = CATEGORY_ICONS.get(file_item.media_type, "")
+                prefix = f"{icon} " if icon else ""
+                name_item = QTableWidgetItem(f"{prefix}{file_item.filename}")
                 name_item.setData(Qt.UserRole, file_item)
                 name_font = QFont()
                 name_font.setBold(True)

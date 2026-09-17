@@ -23,6 +23,11 @@ class Settings:
     download_dir: Path = field(default_factory=lambda: BASE_DIR / "downloads")
     logs_dir: Path = field(default_factory=lambda: BASE_DIR / "logs")
     sessions_dir: Path = field(default_factory=lambda: BASE_DIR / "data" / "sessions")
+    thumbnails_dir: Path = field(default_factory=lambda: BASE_DIR / "data" / "thumbnails")
+
+    @property
+    def thumbnail_dir(self) -> Path:
+        return self.thumbnails_dir
 
     # Telegram Credentials
     api_id: Optional[int] = None

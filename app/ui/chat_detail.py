@@ -48,11 +48,6 @@ class ChatDetailWidget(QWidget):
         empty_layout.setAlignment(Qt.AlignCenter)
         empty_layout.setSpacing(10)
 
-        empty_icon = QLabel("💬")
-        empty_icon.setFont(QFont("Segoe UI Emoji", 36))
-        empty_icon.setAlignment(Qt.AlignCenter)
-        empty_layout.addWidget(empty_icon)
-
         empty_title = QLabel("Select a Chat to Explore")
         empty_title_font = QFont()
         empty_title_font.setPointSize(16)
@@ -163,7 +158,7 @@ class ChatDetailWidget(QWidget):
         idx_layout.setAlignment(Qt.AlignCenter)
         idx_layout.setSpacing(10)
 
-        idx_title = QLabel("⚡ Media & File Indexing")
+        idx_title = QLabel("Media & File Indexing")
         idx_title.setStyleSheet("color: #00aff4; font-weight: bold; font-size: 14px;")
         idx_title.setAlignment(Qt.AlignCenter)
         idx_layout.addWidget(idx_title)
@@ -175,7 +170,7 @@ class ChatDetailWidget(QWidget):
         idx_desc.setAlignment(Qt.AlignCenter)
         idx_layout.addWidget(idx_desc)
 
-        self.btn_index_chat = QPushButton("⚡ Index This Chat Now")
+        self.btn_index_chat = QPushButton("Index This Chat Now")
         self.btn_index_chat.setStyleSheet(
             """
             QPushButton {

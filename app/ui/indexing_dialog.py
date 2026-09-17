@@ -43,7 +43,7 @@ class IndexingDialog(QDialog):
         self.available_chats = available_chats
         self.preselected_chat_id = preselected_chat_id
 
-        self.setWindowTitle("⚡ Telegram Media Indexing Manager")
+        self.setWindowTitle("Telegram Media Indexing Manager")
         self.setMinimumSize(620, 560)
         self.resize(680, 600)
         self._init_ui()

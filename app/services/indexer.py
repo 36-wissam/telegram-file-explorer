@@ -228,6 +228,7 @@ class MediaIndexerService:
         limit: int = 500,
         batch_size: int = 50,
         progress_callback: Optional[Callable[[int, int], None]] = None,
+        batch_discovered_callback: Optional[Callable[[List[MediaFileMetadata]], None]] = None,
         pause_event: Optional[asyncio.Event] = None,
         cancel_check: Optional[Callable[[], bool]] = None,
     ) -> int:
@@ -275,6 +276,8 @@ class MediaIndexerService:
                     if len(current_batch) >= batch_size:
                         self.save_batch_files(current_batch)
                         self.update_indexing_state(chat_id, chat_title, latest_scanned_id, len(current_batch), is_completed=False)
+                        if batch_discovered_callback:
+                            batch_discovered_callback(list(current_batch))
                         current_batch.clear()
 
                         if progress_callback:
@@ -284,6 +287,8 @@ class MediaIndexerService:
             if current_batch:
                 self.save_batch_files(current_batch)
                 self.update_indexing_state(chat_id, chat_title, latest_scanned_id, len(current_batch), is_completed=False)
+                if batch_discovered_callback:
+                    batch_discovered_callback(list(current_batch))
                 current_batch.clear()
 
             if fwe.seconds <= 30:
@@ -296,6 +301,8 @@ class MediaIndexerService:
         if current_batch:
             self.save_batch_files(current_batch)
             self.update_indexing_state(chat_id, chat_title, latest_scanned_id, len(current_batch), is_completed=False)
+            if batch_discovered_callback:
+                batch_discovered_callback(list(current_batch))
             current_batch.clear()
 
         # Mark completed if scan was not cancelled and covered limit or exhausted messages

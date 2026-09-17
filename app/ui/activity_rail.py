@@ -98,21 +98,22 @@ class ActivityRailWidget(QWidget):
         layout.setSpacing(10)
         layout.setAlignment(Qt.AlignHCenter)
 
-        # Top App Logo Icon (Stylized paperplane / folder logo)
-        self.logo_btn = QPushButton("🔷")
+        # Top App Logo Icon (Clean Text Brand)
+        self.logo_btn = QPushButton("TG")
         self.logo_btn.setFixedSize(40, 40)
         self.logo_btn.setToolTip("Telegram File Explorer")
         self.logo_btn.setStyleSheet(
             """
             QPushButton {
-                background-color: #2f66ee;
+                background-color: #229ED9;
                 color: #ffffff;
                 border: none;
                 border-radius: 10px;
-                font-size: 18px;
+                font-size: 14px;
+                font-weight: bold;
             }
             QPushButton:hover {
-                background-color: #2554c7;
+                background-color: #3AAFE8;
             }
             """
         )
@@ -122,23 +123,23 @@ class ActivityRailWidget(QWidget):
         layout.addSpacing(8)
 
         # Navigation Buttons
-        self.btn_chats = RailIconButton("💬", "Chats & Channels Discovery")
+        self.btn_chats = RailIconButton("CH", "Chats & Channels Discovery")
         self.btn_chats.clicked.connect(lambda: self._on_btn_clicked(0))
         layout.addWidget(self.btn_chats, alignment=Qt.AlignCenter)
 
-        self.btn_files = RailIconButton("📁", "All Files Explorer")
+        self.btn_files = RailIconButton("FL", "All Files Explorer")
         self.btn_files.clicked.connect(lambda: self._on_btn_clicked(1))
         layout.addWidget(self.btn_files, alignment=Qt.AlignCenter)
 
-        self.btn_indexer = RailIconButton("⚡", "Media Indexing Manager")
+        self.btn_indexer = RailIconButton("IX", "Media Indexing Manager")
         self.btn_indexer.clicked.connect(lambda: self._on_btn_clicked(2))
         layout.addWidget(self.btn_indexer, alignment=Qt.AlignCenter)
 
-        self.btn_downloads = RailIconButton("📥", "Downloads Inspector")
+        self.btn_downloads = RailIconButton("DL", "Downloads Inspector")
         self.btn_downloads.clicked.connect(lambda: self._on_btn_clicked(3))
         layout.addWidget(self.btn_downloads, alignment=Qt.AlignCenter)
 
-        self.btn_search = RailIconButton("🔍", "Full-Text Search")
+        self.btn_search = RailIconButton("SR", "Full-Text Search")
         self.btn_search.clicked.connect(lambda: self._on_btn_clicked(4))
         layout.addWidget(self.btn_search, alignment=Qt.AlignCenter)
 
@@ -147,8 +148,8 @@ class ActivityRailWidget(QWidget):
 
         layout.addStretch()
 
-        # Bottom Activity Button (Sparkline/Status)
-        self.btn_activity = RailIconButton("📈", "System & Network Activity")
+        # Bottom Activity Button (Status)
+        self.btn_activity = RailIconButton("ST", "System & Network Activity")
         self.btn_activity.clicked.connect(self.activity_clicked.emit)
         layout.addWidget(self.btn_activity, alignment=Qt.AlignCenter)
 

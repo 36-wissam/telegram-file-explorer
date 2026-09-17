@@ -145,12 +145,12 @@ def test_file_explorer_toggle_filters(qapp, repo):
     # Toggle open
     explorer.btn_toggle_filters.click()
     assert explorer.filter_bar.isVisible()
-    assert "🔼" in explorer.btn_toggle_filters.text()
+    assert "Filters" in explorer.btn_toggle_filters.text()
 
     # Toggle closed
     explorer.btn_toggle_filters.click()
     assert not explorer.filter_bar.isVisible()
-    assert "🔽" in explorer.btn_toggle_filters.text()
+    assert "Filters" in explorer.btn_toggle_filters.text()
 
 
 def test_file_explorer_size_filtering(qapp, repo):

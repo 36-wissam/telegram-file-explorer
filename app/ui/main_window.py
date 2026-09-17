@@ -1,13 +1,16 @@
-"""Main application window for Telegram File Explorer."""
+"""Main application window for Telegram File Explorer conforming to design specifications."""
 
+from pathlib import Path
 from typing import List, Optional
-from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QAction, QFont, QIcon
+from PySide6.QtCore import Qt, QTimer, QKeyCombination
+from PySide6.QtGui import QAction, QFont, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
+    QFileDialog,
     QFrame,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QMainWindow,
     QMessageBox,
     QPushButton,
@@ -21,20 +24,25 @@ from PySide6.QtWidgets import (
 from ..core.async_runner import async_runner
 from ..core.config import settings
 from ..core.logger import get_logger
+from ..database.models import IndexedFileModel
+from ..database.repository import DatabaseRepository
+from ..services.downloader import DownloadManager
+from ..services.indexer import MediaIndexerService
 from ..telegram.auth import AuthState, TelegramAuthService
 from ..telegram.chats import TelegramChat, TelegramChatService
-from ..database.repository import DatabaseRepository
 from ..telegram.client import TelegramClientManager
-from .chat_detail import ChatDetailWidget
 from .chat_list import ChatListWidget
-from .file_explorer import FileExplorerWidget
-from .login_dialog import LoginDialog
+from .download_manager import DownloadManagerDialog
+from .inline_auth import InlineAuthWidget
+from .media_browser import ChatMediaBrowserWidget
+from .preview_panel import PreviewDialog
+from .settings_dialog import SettingsDialog
 
 logger = get_logger("ui.main_window")
 
 
 class MainWindow(QMainWindow):
-    """Main desktop application window."""
+    """Main desktop application window conforming to product specifications."""
 
     def __init__(
         self,
@@ -46,22 +54,20 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle(f"{settings.app_name} v{settings.app_version}")
         self.setMinimumSize(960, 640)
-        self.resize(1140, 760)
+        self.resize(1200, 800)
 
         # Initialize core services
         self.client_manager = client_manager or TelegramClientManager(settings)
         self.auth_service = auth_service or TelegramAuthService(self.client_manager)
         self.chat_service = chat_service or TelegramChatService(self.client_manager)
         self.repo = repo or DatabaseRepository()
-        from ..services.downloader import DownloadManager
         self.download_manager = DownloadManager(self.client_manager)
-        from ..services.indexing_manager import IndexingManager
-        self.indexing_manager = IndexingManager(self.client_manager, db_path=self.repo.db_path)
-        self.indexing_manager.indexing_finished.connect(self._on_indexing_finished)
+        self.indexer_service = MediaIndexerService(self.client_manager, db_path=self.repo.db_path)
 
         self._init_menu_bar()
         self._init_ui()
         self._init_status_bar()
+        self._setup_shortcuts()
 
         # Check session state on start
         QTimer.singleShot(100, self._check_initial_auth_state)
@@ -69,36 +75,60 @@ class MainWindow(QMainWindow):
         logger.info("MainWindow initialized successfully.")
 
     def _init_menu_bar(self):
-        """Build top menu bar."""
+        """Build top menu bar without emojis."""
         menu_bar = self.menuBar()
 
         # File Menu
         file_menu = menu_bar.addMenu("&File")
-        exit_action = QAction("&Exit", self)
-        exit_action.setShortcut("Ctrl+Q")
+
+        self.action_downloads = QAction("&Downloads...", self)
+        self.action_downloads.setShortcut(QKeySequence("Ctrl+J"))
+        self.action_downloads.setStatusTip("View download manager")
+        self.action_downloads.triggered.connect(self.open_download_manager)
+        self.action_view_downloads = self.action_downloads
+        file_menu.addAction(self.action_downloads)
+
+        self.action_settings = QAction("&Settings...", self)
+        self.action_settings.setShortcut(QKeySequence("Ctrl+,"))
+        self.action_settings.setStatusTip("Open application settings")
+        self.action_settings.triggered.connect(self.open_settings_dialog)
+        file_menu.addAction(self.action_settings)
+
+        file_menu.addSeparator()
+
+        exit_action = QAction("E&xit", self)
+        exit_action.setShortcut(QKeySequence("Ctrl+Q"))
         exit_action.setStatusTip("Exit the application")
         exit_action.triggered.connect(self.close)
         file_menu.addAction(exit_action)
 
         # Edit Menu
         edit_menu = menu_bar.addMenu("&Edit")
+
         self.action_find_files = QAction("&Find Files...", self)
-        self.action_find_files.setShortcut("Ctrl+F")
-        self.action_find_files.setStatusTip("Search and filter indexed Telegram files")
-        self.action_find_files.triggered.connect(self._on_find_files)
+        self.action_find_files.setShortcut(QKeySequence("Ctrl+F"))
+        self.action_find_files.setStatusTip("Search media in current chat")
+        self.action_find_files.triggered.connect(self._focus_chat_search)
         edit_menu.addAction(self.action_find_files)
 
-        self.action_refresh_all = QAction("&Refresh All", self)
-        self.action_refresh_all.setShortcut("F5")
-        self.action_refresh_all.setStatusTip("Refresh chats and indexed files")
+        self.action_global_search = QAction("&Global Search...", self)
+        self.action_global_search.setShortcut(QKeySequence("Ctrl+K"))
+        self.action_global_search.setStatusTip("Global file search across all chats")
+        self.action_global_search.triggered.connect(self._focus_global_search)
+        edit_menu.addAction(self.action_global_search)
+
+        self.action_refresh_all = QAction("&Refresh", self)
+        self.action_refresh_all.setShortcut(QKeySequence("F5"))
+        self.action_refresh_all.setStatusTip("Refresh chats and media")
         self.action_refresh_all.triggered.connect(self._on_refresh_all)
         edit_menu.addAction(self.action_refresh_all)
 
         # Account Menu
         self.account_menu = menu_bar.addMenu("&Account")
+
         self.action_login = QAction("Sign &In...", self)
-        self.action_login.setShortcut("Ctrl+L")
-        self.action_login.setStatusTip("Sign in with your Telegram account")
+        self.action_login.setShortcut(QKeySequence("Ctrl+L"))
+        self.action_login.setStatusTip("Sign in with Telegram account")
         self.action_login.triggered.connect(self.open_login_dialog)
         self.account_menu.addAction(self.action_login)
 
@@ -108,38 +138,44 @@ class MainWindow(QMainWindow):
         self.account_menu.addAction(self.action_refresh_chats)
 
         self.action_logout = QAction("Sign &Out", self)
-        self.action_logout.setStatusTip("Sign out and clear local session")
+        self.action_logout.setStatusTip("Sign out and remove local session")
         self.action_logout.triggered.connect(self._on_logout)
         self.action_logout.setEnabled(False)
         self.account_menu.addAction(self.action_logout)
 
-        # Downloads Menu
-        downloads_menu = menu_bar.addMenu("&Downloads")
-        self.action_view_downloads = QAction("View &Downloads...", self)
-        self.action_view_downloads.setShortcut("Ctrl+J")
-        self.action_view_downloads.setStatusTip("View active and completed downloads")
-        self.action_view_downloads.triggered.connect(self.open_download_manager)
-        downloads_menu.addAction(self.action_view_downloads)
-
         # Tools Menu
         tools_menu = menu_bar.addMenu("&Tools")
-        self.action_index_manager = QAction("⚡ &Indexing Manager...", self)
-        self.action_index_manager.setShortcut("Ctrl+I")
-        self.action_index_manager.setStatusTip("Scan and index Telegram files in background")
-        self.action_index_manager.triggered.connect(lambda: self.open_indexing_manager())
+        self.action_index_manager = QAction("&Indexing Manager...", self)
+        self.action_index_manager.setShortcut(QKeySequence("Ctrl+I"))
+        self.action_index_manager.setStatusTip("Scan and index media")
+        self.action_index_manager.triggered.connect(self.open_indexing_manager)
         tools_menu.addAction(self.action_index_manager)
+        self.action_logout.setStatusTip("Sign out and remove local session")
+        self.action_logout.triggered.connect(self._on_logout)
+        self.action_logout.setEnabled(False)
+        self.account_menu.addAction(self.action_logout)
 
         # Help Menu
         help_menu = menu_bar.addMenu("&Help")
         about_action = QAction("&About Telegram File Explorer", self)
-        about_action.setShortcut("F1")
-        about_action.setStatusTip("View application version and system information")
+        about_action.setShortcut(QKeySequence("F1"))
+        about_action.setStatusTip("View application info and version")
         about_action.triggered.connect(self._show_about)
         help_menu.addAction(about_action)
 
+    def _setup_shortcuts(self):
+        """Configure keyboard accelerators."""
+        shortcut_k = QShortcut(QKeySequence("Ctrl+K"), self)
+        shortcut_k.activated.connect(self._focus_global_search)
+
+        shortcut_f = QShortcut(QKeySequence("Ctrl+F"), self)
+        shortcut_f.activated.connect(self._focus_chat_search)
+
+        shortcut_comma = QShortcut(QKeySequence("Ctrl+,"), self)
+        shortcut_comma.activated.connect(self.open_settings_dialog)
 
     def _init_ui(self):
-        """Construct central stacked widget layout."""
+        """Construct central stacked widget layout with TopBar and Workspaces."""
         self.central_stack = QStackedWidget(self)
         self.setCentralWidget(self.central_stack)
 
@@ -147,13 +183,14 @@ class MainWindow(QMainWindow):
         self.welcome_page = self._create_welcome_page()
         self.central_stack.addWidget(self.welcome_page)
 
-        # Page 1: Chat Explorer Split View (Discovery sidebar + detail view)
-        self.explorer_page = self._create_explorer_page()
-        self.central_stack.addWidget(self.explorer_page)
+        # Page 1: Main Application Workspace
+        self.workspace_page = self._create_workspace_page()
+        self.central_stack.addWidget(self.workspace_page)
 
     def _create_welcome_page(self) -> QWidget:
-        """Create landing / authentication page with inline multi-step sign in."""
+        """Create clean welcome / sign-in screen without emojis."""
         page = QWidget()
+        page.setStyleSheet("background-color: #111113;")
         layout = QVBoxLayout(page)
         layout.setContentsMargins(32, 24, 32, 24)
         layout.setSpacing(16)
@@ -163,8 +200,8 @@ class MainWindow(QMainWindow):
         self.card.setStyleSheet(
             """
             QFrame {
-                background-color: #1e1f22;
-                border: 1px solid #2b2d31;
+                background-color: #18181B;
+                border: 1px solid #27272A;
                 border-radius: 12px;
                 padding: 24px;
             }
@@ -174,32 +211,31 @@ class MainWindow(QMainWindow):
         card_layout.setSpacing(14)
         card_layout.setAlignment(Qt.AlignCenter)
 
-        title_label = QLabel(f"📂 {settings.app_name}")
+        title_label = QLabel(settings.app_name)
         title_font = QFont()
         title_font.setPointSize(22)
         title_font.setBold(True)
         title_label.setFont(title_font)
         title_label.setAlignment(Qt.AlignCenter)
-        title_label.setStyleSheet("color: #ffffff;")
+        title_label.setStyleSheet("color: #FFFFFF;")
         card_layout.addWidget(title_label)
 
         subtitle_label = QLabel(
-            "Local-first Telegram MTProto file manager, full-text search, and downloader."
+            "Local-first Telegram MTProto file explorer, browser, and downloader."
         )
         subtitle_label.setAlignment(Qt.AlignCenter)
-        subtitle_label.setStyleSheet("color: #949ba4; font-size: 13px;")
+        subtitle_label.setStyleSheet("color: #A1A1AA; font-size: 13px;")
         card_layout.addWidget(subtitle_label)
 
-        privacy_badge = QLabel("🛡️ 100% Local-First: Credentials & sessions never leave this PC")
+        privacy_badge = QLabel("100% Local-First: Credentials and sessions never leave your computer")
         privacy_badge.setAlignment(Qt.AlignCenter)
         privacy_badge.setStyleSheet(
-            "background-color: #232428; color: #57f287; border-radius: 6px; "
+            "background-color: #111113; color: #22C55E; border: 1px solid #27272A; border-radius: 6px; "
             "padding: 6px 12px; font-size: 11px; font-weight: 500;"
         )
         card_layout.addWidget(privacy_badge)
 
         # Embedded Inline Authentication Widget
-        from .inline_auth import InlineAuthWidget
         self.auth_widget = InlineAuthWidget(self.auth_service, parent=self)
         self.auth_widget.authenticated.connect(self._on_login_success)
         card_layout.addWidget(self.auth_widget)
@@ -209,267 +245,141 @@ class MainWindow(QMainWindow):
         layout.addStretch()
         return page
 
-    def _create_explorer_page(self) -> QWidget:
-        """Create split-pane chat discovery and file explorer page matching SaaS layout."""
-        from .activity_rail import ActivityRailWidget
-
+    def _create_workspace_page(self) -> QWidget:
+        """Create the primary workspace with Top Bar, 300px Chat List sidebar, and Media Browser."""
         page = QWidget()
-        page.setStyleSheet("background-color: #13141f;")
-        root_h_layout = QHBoxLayout(page)
-        root_h_layout.setContentsMargins(0, 0, 0, 0)
-        root_h_layout.setSpacing(0)
+        page.setStyleSheet("background-color: #111113;")
+        page_layout = QVBoxLayout(page)
+        page_layout.setContentsMargins(0, 0, 0, 0)
+        page_layout.setSpacing(0)
 
-        # 1. Leftmost Activity Icon Rail (~56px)
-        self.activity_rail = ActivityRailWidget(self)
-        self.activity_rail.nav_changed.connect(self._on_rail_nav)
-        self.activity_rail.profile_clicked.connect(self.open_login_dialog)
-        self.activity_rail.activity_clicked.connect(self.open_download_manager)
-        root_h_layout.addWidget(self.activity_rail)
+        # 1. Top Bar Header
+        self.top_bar = self._create_top_bar()
+        page_layout.addWidget(self.top_bar)
 
-        # 2. Main Body Container (Header + Views)
-        body_widget = QWidget()
-        body_widget.setStyleSheet("background-color: #13141f;")
-        body_layout = QVBoxLayout(body_widget)
-        body_layout.setContentsMargins(0, 0, 0, 0)
-        body_layout.setSpacing(0)
+        # 2. Main Horizontal Splitter (Sidebar 300px + Media Browser)
+        self.main_splitter = QSplitter(Qt.Horizontal)
+        self.main_splitter.setStyleSheet("QSplitter::handle { background-color: #27272A; width: 1px; }")
 
-        # Top Breadcrumb & Action Header Bar
-        top_header = QFrame()
-        top_header.setFixedHeight(52)
-        top_header.setStyleSheet(
+        # Sidebar: Chat List Widget
+        self.chat_list_widget = ChatListWidget()
+        self.chat_list_widget.setMinimumWidth(260)
+        self.chat_list_widget.setMaximumWidth(340)
+        self.chat_list_widget.chat_selected.connect(self._on_chat_selected)
+        self.chat_list_widget.refresh_requested.connect(self.refresh_chats)
+        self.main_splitter.addWidget(self.chat_list_widget)
+
+        # Main Content: Chat Media Browser Widget
+        self.media_browser = ChatMediaBrowserWidget(
+            repo=self.repo,
+            indexer_service=self.indexer_service,
+            parent=self,
+        )
+        self.media_browser.file_selected.connect(self._on_file_selected)
+        self.media_browser.file_double_clicked.connect(self._on_file_double_clicked)
+        self.main_splitter.addWidget(self.media_browser)
+
+        self.file_explorer_widget = self.media_browser
+        self.view_stack = self.media_browser.view_stack
+
+        self.main_splitter.setStretchFactor(0, 0)
+        self.main_splitter.setStretchFactor(1, 1)
+
+        page_layout.addWidget(self.main_splitter)
+        return page
+
+    def _create_top_bar(self) -> QWidget:
+        """Create modern top navigation bar matching the design system."""
+        top_bar = QFrame(self)
+        top_bar.setFixedHeight(54)
+        top_bar.setStyleSheet(
             """
             QFrame {
-                background-color: #1a1c29;
-                border-bottom: 1px solid #1e202e;
+                background-color: #18181B;
+                border-bottom: 1px solid #27272A;
                 padding: 4px 16px;
             }
             """
         )
-        th_layout = QHBoxLayout(top_header)
-        th_layout.setContentsMargins(16, 4, 16, 4)
-        th_layout.setSpacing(12)
+        layout = QHBoxLayout(top_bar)
+        layout.setContentsMargins(16, 6, 16, 6)
+        layout.setSpacing(12)
 
-        # Hamburger toggle
-        self.btn_hamburger = QPushButton("☰")
-        self.btn_hamburger.setFixedSize(32, 32)
-        self.btn_hamburger.setStyleSheet(
+        # App Title / Brand
+        brand_label = QLabel(settings.app_name)
+        brand_font = QFont()
+        brand_font.setPointSize(13)
+        brand_font.setBold(True)
+        brand_label.setFont(brand_font)
+        brand_label.setStyleSheet("color: #FFFFFF;")
+        layout.addWidget(brand_label)
+
+        layout.addSpacing(16)
+
+        # Global Search Field
+        self.global_search_input = QLineEdit()
+        self.global_search_input.setPlaceholderText("Search files across all chats (Ctrl+K)...")
+        self.global_search_input.setClearButtonEnabled(True)
+        self.global_search_input.setFixedWidth(340)
+        self.global_search_input.setStyleSheet(
             """
-            QPushButton {
-                background: transparent;
-                color: #94a3b8;
-                border: none;
-                font-size: 16px;
-                padding: 0;
-            }
-            QPushButton:hover {
-                color: #ffffff;
-            }
-            """
-        )
-        self.btn_hamburger.clicked.connect(lambda: self._switch_main_view(0 if self.view_stack.currentIndex() == 1 else 1))
-        th_layout.addWidget(self.btn_hamburger)
-
-        # Breadcrumbs
-        self.breadcrumb_label = QLabel("<b>All Chats</b>  ›  <b>Workspace</b>  ›  Media ▾")
-        self.breadcrumb_label.setStyleSheet("color: #94a3b8; font-size: 13px;")
-        th_layout.addWidget(self.breadcrumb_label)
-
-        th_layout.addStretch()
-
-        # View Mode Switchers for backwards compatibility
-        self.btn_nav_chats = QPushButton("💬 Chats")
-        self.btn_nav_chats.setObjectName("darkPillButton")
-        self.btn_nav_chats.clicked.connect(lambda: self._switch_main_view(0))
-        th_layout.addWidget(self.btn_nav_chats)
-
-        self.btn_nav_files = QPushButton("📂 Files")
-        self.btn_nav_files.setObjectName("darkPillButton")
-        self.btn_nav_files.clicked.connect(lambda: self._switch_main_view(1))
-        th_layout.addWidget(self.btn_nav_files)
-
-        # Avatar group stack
-        avatars_label = QLabel("👥")
-        avatars_label.setStyleSheet("font-size: 16px; color: #94a3b8; padding: 0 4px;")
-        avatars_label.setToolTip("Active Session")
-        th_layout.addWidget(avatars_label)
-
-        # Search icon button
-        self.btn_quick_search = QPushButton("🔍")
-        self.btn_quick_search.setFixedSize(32, 32)
-        self.btn_quick_search.setStyleSheet(
-            """
-            QPushButton {
-                background-color: #24273b;
-                color: #94a3b8;
-                border: 1px solid #2e3248;
+            QLineEdit {
+                background-color: #111113;
+                border: 1px solid #27272A;
                 border-radius: 6px;
+                color: #F4F4F5;
+                padding: 5px 12px;
+                font-size: 12px;
             }
-            QPushButton:hover {
-                background-color: #2f334d;
-                color: #ffffff;
+            QLineEdit:focus {
+                border-color: #229ED9;
             }
             """
         )
-        self.btn_quick_search.clicked.connect(self._on_find_files)
-        th_layout.addWidget(self.btn_quick_search)
+        self.global_search_input.returnPressed.connect(self._on_global_search_enter)
+        layout.addWidget(self.global_search_input)
 
-        # Primary Action Button: ⚡ Index Media / Upload (Royal Blue)
-        self.btn_open_indexer = QPushButton("⚡ Index Media")
-        self.btn_open_indexer.setObjectName("primaryButton")
-        self.btn_open_indexer.clicked.connect(lambda: self.open_indexing_manager())
-        th_layout.addWidget(self.btn_open_indexer)
+        layout.addStretch()
 
-        body_layout.addWidget(top_header)
+        # Downloads Button
+        self.btn_downloads = QPushButton("Downloads")
+        self.btn_downloads.setObjectName("secondaryButton")
+        self.btn_downloads.clicked.connect(self.open_download_manager)
+        layout.addWidget(self.btn_downloads)
 
-        # View Stack
-        self.view_stack = QStackedWidget()
+        # Settings Button
+        self.btn_settings = QPushButton("Settings")
+        self.btn_settings.setObjectName("secondaryButton")
+        self.btn_settings.clicked.connect(self.open_settings_dialog)
+        layout.addWidget(self.btn_settings)
 
-        # View 0: Chats & Chat Detail Splitter
-        chat_splitter = QSplitter(Qt.Horizontal)
-        chat_splitter.setStyleSheet("QSplitter::handle { background-color: #1e202e; width: 1px; }")
+        # User Profile Label
+        self.lbl_user_name = QLabel("")
+        self.lbl_user_name.setStyleSheet("color: #229ED9; font-weight: 500; font-size: 12px; padding: 0 4px;")
+        layout.addWidget(self.lbl_user_name)
 
-        self.chat_list_widget = ChatListWidget()
-        self.chat_list_widget.setMinimumWidth(300)
-        self.chat_list_widget.setMaximumWidth(400)
-        self.chat_list_widget.chat_selected.connect(self._on_chat_selected)
-        self.chat_list_widget.refresh_requested.connect(self.refresh_chats)
-        chat_splitter.addWidget(self.chat_list_widget)
+        # Logout / Switch Account Button
+        self.btn_logout = QPushButton("Sign Out")
+        self.btn_logout.setObjectName("secondaryButton")
+        self.btn_logout.clicked.connect(self._on_logout)
+        layout.addWidget(self.btn_logout)
 
-        self.chat_detail_widget = ChatDetailWidget()
-        self.chat_detail_widget.index_chat_requested.connect(lambda cid: self.open_indexing_manager(preselected_chat_id=cid))
-        chat_splitter.addWidget(self.chat_detail_widget)
-        chat_splitter.setStretchFactor(0, 0)
-        chat_splitter.setStretchFactor(1, 1)
-        self.view_stack.addWidget(chat_splitter)
-
-        # View 1: Main File Explorer
-        self.file_explorer_widget = FileExplorerWidget(self.repo)
-        self.file_explorer_widget.preview_panel.download_requested.connect(self._on_download_file)
-        self.view_stack.addWidget(self.file_explorer_widget)
-
-        body_layout.addWidget(self.view_stack)
-        root_h_layout.addWidget(body_widget)
-        return page
-
-    def _on_rail_nav(self, index: int):
-        """Handle activity rail navigation clicks."""
-        if index == 0:
-            self._switch_main_view(0)
-        elif index == 1:
-            self._switch_main_view(1)
-        elif index == 2:
-            self.open_indexing_manager()
-        elif index == 3:
-            self.open_download_manager()
-        elif index == 4:
-            self._on_find_files()
-
-    def open_indexing_manager(self, preselected_chat_id: Optional[int] = None):
-        """Open the media indexing management dialog."""
-        from .indexing_dialog import IndexingDialog
-        chats = []
-        if hasattr(self, "chat_list_widget"):
-            chats = getattr(self.chat_list_widget, "chats", getattr(self.chat_list_widget, "_all_chats", []))
-        if not chats:
-            db_chats = self.repo.get_chats()
-            from ..telegram.chats import ChatType, TelegramChat
-            chats = [
-                TelegramChat(
-                    id=c.id,
-                    title=c.title,
-                    chat_type=ChatType(c.chat_type) if c.chat_type in [e.value for e in ChatType] else ChatType.UNKNOWN,
-                )
-                for c in db_chats
-            ]
-        dialog = IndexingDialog(
-            self.indexing_manager,
-            available_chats=chats,
-            preselected_chat_id=preselected_chat_id,
-            parent=self,
-        )
-        dialog.exec()
-
-    def _on_indexing_finished(self, total_files: int, is_cancelled: bool):
-        """Update file explorer and chat filter when indexing completes."""
-        if hasattr(self, "file_explorer_widget"):
-            self.file_explorer_widget.refresh_chats_filter()
-            self.file_explorer_widget.reload_files()
-        self._update_status_files_indicator()
-        status_txt = (
-            f"Indexing finished: {total_files} files indexed."
-            if not is_cancelled
-            else "Indexing cancelled."
-        )
-        self.statusBar().showMessage(status_txt, 6000)
-
-    def open_download_manager(self):
-        """Open the downloads inspector dialog."""
-        from .download_manager import DownloadManagerDialog
-        dialog = DownloadManagerDialog(self.download_manager, parent=self)
-        dialog.exec()
-
-    def _on_download_file(self, file_model):
-        """Prompt destination directory and begin background download."""
-        from PySide6.QtWidgets import QFileDialog
-        chosen_dir = QFileDialog.getExistingDirectory(
-            self,
-            "Select Download Destination Folder",
-            str(settings.download_dir),
-        )
-        if not chosen_dir:
-            return
-
-        from pathlib import Path
-        dest_path = Path(chosen_dir)
-        task = self.download_manager.start_download(
-            chat_id=file_model.chat_id,
-            message_id=file_model.message_id,
-            file_id=file_model.file_id,
-            filename=file_model.filename,
-            destination_dir=dest_path,
-            total_size=file_model.file_size,
-        )
-
-        self.status_bar.showMessage(f"Downloading {file_model.filename} to {dest_path.name}...")
-        self.open_download_manager()
-
-
-    def _switch_main_view(self, index: int):
-        """Switch between Chats Discovery (0) and File Explorer (1)."""
-        self.view_stack.setCurrentIndex(index)
-        if hasattr(self, "activity_rail"):
-            self.activity_rail.set_current_index(index)
-
-        if index == 0:
-            self.btn_nav_chats.setObjectName("primaryButton")
-            self.btn_nav_files.setObjectName("")
-            if hasattr(self, "breadcrumb_label"):
-                self.breadcrumb_label.setText("<b>All Chats</b>  ›  <b>Chats Discovery</b> ▾")
-        else:
-            self.btn_nav_chats.setObjectName("")
-            self.btn_nav_files.setObjectName("primaryButton")
-            if hasattr(self, "breadcrumb_label"):
-                self.breadcrumb_label.setText("<b>All Files</b>  ›  <b>File Explorer</b> ▾")
-            self.file_explorer_widget.reload_files()
-        self.btn_nav_chats.style().unpolish(self.btn_nav_chats)
-        self.btn_nav_chats.style().polish(self.btn_nav_chats)
-        self.btn_nav_files.style().unpolish(self.btn_nav_files)
-        self.btn_nav_files.style().polish(self.btn_nav_files)
+        return top_bar
 
     def _init_status_bar(self):
-        """Set up bottom status bar with permanent status indicators."""
+        """Set up bottom status bar without unicode emojis."""
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
 
-        self.status_files_indicator = QLabel("📁 0 files")
+        self.status_files_indicator = QLabel("0 files indexed")
         self.status_files_indicator.setStyleSheet(
-            "color: #94a3b8; font-size: 11px; padding: 0 10px; font-weight: 500;"
+            "color: #A1A1AA; font-size: 11px; padding: 0 10px; font-weight: 500;"
         )
         self.status_bar.addPermanentWidget(self.status_files_indicator)
 
-        self.status_auth_indicator = QLabel("🔴 Not Signed In")
+        self.status_auth_indicator = QLabel("Not Signed In")
         self.status_auth_indicator.setStyleSheet(
-            "color: #ed4245; font-size: 11px; padding: 0 10px; font-weight: 500;"
+            "color: #EF4444; font-size: 11px; padding: 0 10px; font-weight: 500;"
         )
         self.status_bar.addPermanentWidget(self.status_auth_indicator)
 
@@ -477,16 +387,16 @@ class MainWindow(QMainWindow):
         self._update_status_files_indicator()
 
     def _update_status_files_indicator(self):
-        """Update the permanent status bar file count indicator."""
+        """Update file count in status bar."""
         try:
             count = self.repo.get_files_count()
-            self.status_files_indicator.setText(f"📁 {count:,} files")
+            self.status_files_indicator.setText(f"{count:,} files indexed")
         except Exception as e:
             logger.debug("Could not update status files count: %s", e)
 
     def _check_initial_auth_state(self):
-        """Check if local session is already authenticated (session persistence)."""
-        self.status_bar.showMessage("Checking session...")
+        """Check local Telegram session persistence."""
+        self.status_bar.showMessage("Checking Telegram session...")
 
         def on_success(state: AuthState):
             self.update_auth_ui()
@@ -504,64 +414,60 @@ class MainWindow(QMainWindow):
         )
 
     def update_auth_ui(self):
-        """Refresh UI state based on authentication."""
+        """Refresh UI based on authentication state."""
         state = self.auth_service.state
         if state == AuthState.AUTHORIZED and self.auth_service.current_user:
             user = self.auth_service.current_user
-            name = f"{user['first_name']} {user['last_name']}".strip()
-            username = f"@{user['username']}" if user['username'] else "No username"
+            name = f"{user.get('first_name', '')} {user.get('last_name', '')}".strip()
+            username = f"@{user['username']}" if user.get('username') else ""
 
-            if hasattr(self, "activity_rail"):
-                self.activity_rail.set_user_info(name, True)
-
+            self.lbl_user_name.setText(name)
             self.action_login.setEnabled(False)
             self.action_logout.setEnabled(True)
             self.action_refresh_chats.setEnabled(True)
 
-            self.status_auth_indicator.setText(f"🟢 {name}")
+            self.status_auth_indicator.setText(f"Connected: {name}")
             self.status_auth_indicator.setStyleSheet(
-                "color: #57f287; font-size: 11px; padding: 0 10px; font-weight: bold;"
+                "color: #22C55E; font-size: 11px; padding: 0 10px; font-weight: 500;"
             )
 
             self.central_stack.setCurrentIndex(1)
-            self.status_bar.showMessage(f"Connected to Telegram as {name} ({username})")
+            self.status_bar.showMessage(f"Connected to Telegram as {name} {username}")
 
         else:
-            if hasattr(self, "activity_rail"):
-                self.activity_rail.set_user_info("Guest", False)
-
+            self.lbl_user_name.setText("")
             self.central_stack.setCurrentIndex(0)
             self.action_login.setEnabled(True)
             self.action_logout.setEnabled(False)
             self.action_refresh_chats.setEnabled(False)
 
             if state == AuthState.NOT_CONFIGURED:
-                self.status_auth_indicator.setText("🟡 API Not Configured")
+                self.status_auth_indicator.setText("API Not Configured")
                 self.status_auth_indicator.setStyleSheet(
-                    "color: #fee75c; font-size: 11px; padding: 0 10px; font-weight: bold;"
+                    "color: #F59E0B; font-size: 11px; padding: 0 10px; font-weight: 500;"
                 )
                 self.status_bar.showMessage("Telegram API credentials required.")
             else:
-                self.status_auth_indicator.setText("🔴 Not Signed In")
+                self.status_auth_indicator.setText("Not Signed In")
                 self.status_auth_indicator.setStyleSheet(
-                    "color: #ed4245; font-size: 11px; padding: 0 10px; font-weight: bold;"
+                    "color: #EF4444; font-size: 11px; padding: 0 10px; font-weight: 500;"
                 )
                 self.status_bar.showMessage("Ready to sign in.")
 
         self._update_status_files_indicator()
 
     def refresh_chats(self):
-        """Retrieve accessible chats from Telegram MTProto in background."""
+        """Retrieve accessible dialogs from Telegram MTProto."""
         if self.auth_service.state != AuthState.AUTHORIZED:
             return
 
-        self.status_bar.showMessage("Discovering accessible chats & channels...")
+        self.status_bar.showMessage("Discovering dialogues from Telegram...")
         self.chat_list_widget.btn_refresh.setEnabled(False)
 
         def on_success(chats):
             self.chat_list_widget.btn_refresh.setEnabled(True)
             self.chat_list_widget.set_chats(chats)
-            self.status_bar.showMessage(f"Discovered {len(chats)} chats from your account.")
+            self.status_bar.showMessage(f"Discovered {len(chats)} chats from Telegram.")
 
         def on_error(exc):
             self.chat_list_widget.btn_refresh.setEnabled(True)
@@ -569,32 +475,73 @@ class MainWindow(QMainWindow):
             self.status_bar.showMessage(f"Error loading chats: {exc}")
 
         async_runner.run_coroutine_async(
-            self.chat_service.get_dialogs(limit=150),
+            self.chat_service.get_dialogs(limit=200),
             callback=on_success,
             error_callback=on_error,
         )
 
     def _on_chat_selected(self, chat: TelegramChat):
-        """Handle chat navigation."""
-        self.chat_detail_widget.set_chat(chat)
-        if hasattr(self, "breadcrumb_label"):
-            self.breadcrumb_label.setText(f"<b>All Chats</b>  ›  <b>{chat.display_name}</b>  ›  Media ▾")
-        self.status_bar.showMessage(f"Viewing chat: {chat.display_name} (ID: {chat.id})")
+        """Automatically display chat header, cached files, and progressively stream newer/older media."""
+        self.media_browser.set_chat(chat)
+        self.status_bar.showMessage(f"Viewing media in {chat.display_name}")
+
+    def _on_file_selected(self, file_model: IndexedFileModel):
+        """Handle single-click selection on media file."""
+        self.status_bar.showMessage(f"Selected: {file_model.filename} ({file_model.media_type})")
+
+    def _on_file_double_clicked(self, file_model: IndexedFileModel):
+        """Open detailed media preview dialog on double click."""
+        dialog = PreviewDialog(file_model, parent=self)
+        dialog.download_requested.connect(self._on_download_file)
+        dialog.exec()
+
+    def _on_download_file(self, file_model: IndexedFileModel):
+        """Prompt destination directory and start background download."""
+        chosen_dir = QFileDialog.getExistingDirectory(
+            self,
+            "Select Download Destination Folder",
+            str(settings.download_dir),
+        )
+        if not chosen_dir:
+            return
+
+        dest_path = Path(chosen_dir)
+        task = self.download_manager.start_download(
+            chat_id=file_model.chat_id,
+            message_id=file_model.message_id,
+            file_id=file_model.file_id,
+            filename=file_model.filename,
+            destination_dir=dest_path,
+            total_size=file_model.file_size,
+        )
+
+        self.status_bar.showMessage(f"Downloading {file_model.filename} to {dest_path.name}...")
+        self.open_download_manager()
+
+    def open_download_manager(self):
+        """Open the downloads inspector modal dialog."""
+        dialog = DownloadManagerDialog(self.download_manager, parent=self)
+        dialog.exec()
+
+    def open_settings_dialog(self):
+        """Open application settings dialog."""
+        dialog = SettingsDialog(self.auth_service, self.repo, parent=self)
+        dialog.logout_requested.connect(self._on_logout)
+        dialog.exec()
 
     def open_login_dialog(self):
-        """Switch to welcome page and focus the inline sign-in card."""
+        """Switch to landing page and focus inline authentication card."""
         self.central_stack.setCurrentIndex(0)
-        self.action_login.setEnabled(True)
         if hasattr(self, "auth_widget"):
             self.auth_widget.reset_to_initial()
 
     def _on_login_success(self, user_dict):
-        """Callback when user completes login."""
+        """Callback when user completes authentication."""
         self.update_auth_ui()
         self.refresh_chats()
 
     def _on_logout(self):
-        """Log out and reset application state."""
+        """Log out and remove local session file."""
         confirm = QMessageBox.question(
             self,
             "Sign Out",
@@ -605,11 +552,11 @@ class MainWindow(QMainWindow):
         if confirm != QMessageBox.Yes:
             return
 
-        self.status_bar.showMessage("Logging out...")
+        self.status_bar.showMessage("Signing out...")
 
         def on_success(_):
             self.chat_list_widget.set_chats([])
-            self.chat_detail_widget.set_chat(None)
+            self.media_browser.set_chat(None)
             if hasattr(self, "auth_widget"):
                 self.auth_widget.reset_to_initial()
             self.update_auth_ui()
@@ -618,7 +565,7 @@ class MainWindow(QMainWindow):
         def on_error(exc):
             logger.error("Logout failed: %s", exc)
             self.update_auth_ui()
-            self.status_bar.showMessage("Error during logout.")
+            self.status_bar.showMessage("Error during sign out.")
 
         async_runner.run_coroutine_async(
             self.auth_service.log_out(),
@@ -626,26 +573,55 @@ class MainWindow(QMainWindow):
             error_callback=on_error,
         )
 
-    def _on_find_files(self):
-        """Switch to file explorer view and focus the search box."""
+    def _focus_global_search(self):
+        """Focus the top bar global search input."""
         if self.central_stack.currentIndex() == 1:
-            self._switch_main_view(1)
+            self.global_search_input.setFocus()
+            self.global_search_input.selectAll()
+
+    def _focus_chat_search(self):
+        """Focus the media browser search input."""
+        if self.central_stack.currentIndex() == 1:
+            self.media_browser.focus_search()
+
+    def _on_global_search_enter(self):
+        """Trigger search across current chat."""
+        query = self.global_search_input.text().strip()
+        if hasattr(self, "media_browser"):
+            self.media_browser.search_input.setText(query)
+
+    def open_indexing_manager(self, preselected_chat_id: Optional[int] = None):
+        """Open indexing dialog."""
+        from .indexing_dialog import IndexingDialog
+        from ..services.indexing_manager import IndexingManager
+        im = IndexingManager(self.client_manager, db_path=self.repo.db_path)
+        chats = getattr(self.chat_list_widget, "_all_chats", [])
+        dialog = IndexingDialog(
+            im,
+            available_chats=chats,
+            preselected_chat_id=preselected_chat_id,
+            parent=self,
+        )
+        dialog.exec()
+
+    def _on_find_files(self):
+        """Focus file search."""
+        if hasattr(self, "view_stack"):
+            self.view_stack.setCurrentIndex(1)
+        if hasattr(self, "file_explorer_widget"):
             self.file_explorer_widget.focus_search()
-        else:
-            self.status_bar.showMessage("Sign in to search and explore files.", 3000)
 
     def _on_refresh_all(self):
         """Refresh chats, indexed files, and status indicators."""
         if self.auth_service.state == AuthState.AUTHORIZED:
             self.refresh_chats()
-        if hasattr(self, "file_explorer_widget"):
-            self.file_explorer_widget.refresh_chats_filter()
-            self.file_explorer_widget.reload_files()
+        if hasattr(self, "media_browser"):
+            self.media_browser.reload_files()
         self._update_status_files_indicator()
-        self.status_bar.showMessage("Refreshed chats and file index.", 3000)
+        self.status_bar.showMessage("Refreshed chats and media index.", 3000)
 
     def _show_about(self):
-        """Show enriched About dialog with versions and local privacy assurance."""
+        """Display About dialog without emojis."""
         import sys
         import PySide6
         import telethon
@@ -655,24 +631,23 @@ class MainWindow(QMainWindow):
         telethon_ver = telethon.__version__
 
         about_text = (
-            f"<div style='font-family: sans-serif;'>"
-            f"<h2 style='margin-bottom: 4px; color: #5865f2;'>📂 {settings.app_name} v{settings.app_version}</h2>"
-            f"<p style='color: #949ba4; margin-top: 0;'>Desktop Telegram MTProto File Manager & Explorer</p>"
-            f"<hr style='border: 0; border-top: 1px solid #2b2d31;' />"
+            f"<div style='font-family: sans-serif; color: #F4F4F5;'>"
+            f"<h2 style='margin-bottom: 4px; color: #229ED9;'>{settings.app_name} v{settings.app_version}</h2>"
+            f"<p style='color: #A1A1AA; margin-top: 0;'>Desktop Telegram MTProto File Manager & Explorer</p>"
+            f"<hr style='border: 0; border-top: 1px solid #27272A;' />"
             f"<p><b>System & Engine Information:</b></p>"
-            f"<ul style='line-height: 1.5; color: #dbdee1;'>"
+            f"<ul style='line-height: 1.5; color: #D4D4D8;'>"
             f"<li><b>Python:</b> {py_ver}</li>"
             f"<li><b>PySide6 (Qt):</b> {qt_ver}</li>"
-            f"<li><b>Telethon (MTProto):</b> {telethon_ver}</li>"
-            f"<li><b>Database:</b> SQLite FTS5 Full-Text Search Engine</li>"
+            f"<li><b>Telethon:</b> {telethon_ver}</li>"
+            f"<li><b>Database:</b> SQLite FTS5 Full-Text Search</li>"
             f"</ul>"
-            f"<p><b>🛡️ Local-First Privacy Guarantee:</b></p>"
-            f"<p style='color: #949ba4; font-size: 12px; line-height: 1.4;'>"
+            f"<p><b>Local-First Privacy Guarantee:</b></p>"
+            f"<p style='color: #A1A1AA; font-size: 12px; line-height: 1.4;'>"
             f"All credentials, session files, databases, and media downloads stay exclusively "
-            f"on your computer in the <code>data/</code> folder. 2FA passwords are kept only in volatile RAM. "
-            f"No data is ever transmitted to external third-party servers."
+            f"on your computer in the <code>data/</code> folder. 2FA passwords are kept only in volatile memory. "
+            f"No data is ever transmitted to third-party servers."
             f"</p>"
-            f"<p style='color: #949ba4; font-size: 11px;'>Repository: https://github.com/36-wissam/telegram-file-explorer</p>"
             f"</div>"
         )
         QMessageBox.about(

@@ -49,10 +49,10 @@ class InlineAuthWidget(QWidget):
 
         self.step_labels = []
         steps = [
-            ("🔑 1. API", "Configure Telegram MTProto API"),
-            ("📱 2. Phone", "Enter Telegram phone number"),
-            ("✉️ 3. Code", "Enter verification code"),
-            ("🔒 4. 2FA", "Two-step verification"),
+            ("1. API", "Configure Telegram MTProto API"),
+            ("2. Phone", "Enter Telegram phone number"),
+            ("3. Code", "Enter verification code"),
+            ("4. 2FA", "Two-step verification"),
         ]
 
         for idx, (label_text, tooltip) in enumerate(steps):
@@ -62,8 +62,8 @@ class InlineAuthWidget(QWidget):
             self.step_labels.append(lbl)
             self.breadcrumb_layout.addWidget(lbl)
             if idx < len(steps) - 1:
-                arrow = QLabel("➔")
-                arrow.setStyleSheet("color: #4e5058; font-size: 11px;")
+                arrow = QLabel(">")
+                arrow.setStyleSheet("color: #71717A; font-size: 11px; font-weight: bold;")
                 self.breadcrumb_layout.addWidget(arrow)
 
         main_layout.addLayout(self.breadcrumb_layout)
@@ -71,12 +71,12 @@ class InlineAuthWidget(QWidget):
         # Step Header (Title + Subtitle)
         self.step_title = QLabel("Sign in to Telegram")
         self.step_title.setAlignment(Qt.AlignCenter)
-        self.step_title.setStyleSheet("font-size: 16px; font-weight: bold; color: #ffffff;")
+        self.step_title.setStyleSheet("font-size: 16px; font-weight: 600; color: #F4F4F5;")
         main_layout.addWidget(self.step_title)
 
         self.step_subtitle = QLabel("")
         self.step_subtitle.setAlignment(Qt.AlignCenter)
-        self.step_subtitle.setStyleSheet("font-size: 12px; color: #949ba4;")
+        self.step_subtitle.setStyleSheet("font-size: 12px; color: #A1A1AA;")
         self.step_subtitle.setWordWrap(True)
         main_layout.addWidget(self.step_subtitle)
 
@@ -109,22 +109,22 @@ class InlineAuthWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
 
         info = QLabel(
-            "Get your API credentials from <a href='https://my.telegram.org' style='color: #00aff4;'>my.telegram.org</a>.<br>"
-            "<small style='color: #949ba4;'>Credentials are stored strictly on your local PC in <code>data/.env</code>.</small>"
+            "Obtain your API credentials from <a href='https://my.telegram.org' style='color: #229ED9;'>my.telegram.org</a>.<br>"
+            "<small style='color: #71717A;'>Credentials are stored strictly on your local PC in <code>data/.env</code>.</small>"
         )
         info.setOpenExternalLinks(True)
         info.setWordWrap(True)
-        info.setStyleSheet("background-color: #2b2d31; padding: 10px; border-radius: 6px; font-size: 12px;")
+        info.setStyleSheet("background-color: #18181B; padding: 10px; border-radius: 6px; border: 1px solid #27272A; font-size: 12px;")
         layout.addWidget(info)
 
-        layout.addWidget(QLabel("🔑 API ID:"))
+        layout.addWidget(QLabel("API ID:"))
         self.api_id_input = QLineEdit()
         self.api_id_input.setPlaceholderText("e.g. 12345678")
         if settings.api_id:
             self.api_id_input.setText(str(settings.api_id))
         layout.addWidget(self.api_id_input)
 
-        layout.addWidget(QLabel("🗝️ API Hash:"))
+        layout.addWidget(QLabel("API Hash:"))
         self.api_hash_input = QLineEdit()
         self.api_hash_input.setPlaceholderText("e.g. 0123456789abcdef0123456789abcdef")
         if settings.api_hash:
@@ -132,7 +132,7 @@ class InlineAuthWidget(QWidget):
         layout.addWidget(self.api_hash_input)
 
         layout.addSpacing(6)
-        self.btn_save_api = QPushButton("💾 Save & Continue ➔")
+        self.btn_save_api = QPushButton("Save & Continue")
         self.btn_save_api.setObjectName("primaryButton")
         self.btn_save_api.clicked.connect(self._on_save_api)
         layout.addWidget(self.btn_save_api)
@@ -149,11 +149,11 @@ class InlineAuthWidget(QWidget):
             settings.save_local_credentials(val_id, val_hash)
             self.auth_service.manager.initialize_client(val_id, val_hash)
             self.clear_banner()
-            self.set_step(1, "📱 Enter Phone Number", "We will send a login code to your Telegram app or SMS")
+            self.set_step(1, "Enter Phone Number", "We will send a login code to your Telegram app or SMS")
         except ConfigurationError as e:
-            self.show_error(f"❌ {e}")
+            self.show_error(str(e))
         except Exception as e:
-            self.show_error(f"❌ Error initializing client: {e}")
+            self.show_error(f"Error initializing client: {e}")
 
     # --- Page 1: Phone Number ---
     def _create_phone_page(self) -> QWidget:
@@ -162,24 +162,24 @@ class InlineAuthWidget(QWidget):
         layout.setSpacing(12)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        layout.addWidget(QLabel("📱 Phone Number (with international country code):"))
+        layout.addWidget(QLabel("Phone Number (international format):"))
         self.phone_input = QLineEdit()
         self.phone_input.setPlaceholderText("+1234567890")
         self.phone_input.returnPressed.connect(self._on_send_code)
         layout.addWidget(self.phone_input)
 
-        hint = QLabel("💡 Include country code (e.g. +1 for US/CA, +44 for UK, +964 for Iraq).")
-        hint.setStyleSheet("color: #949ba4; font-size: 11px;")
+        hint = QLabel("Include country code (e.g. +1 for US/CA, +44 for UK).")
+        hint.setStyleSheet("color: #71717A; font-size: 11px;")
         layout.addWidget(hint)
 
         layout.addSpacing(6)
-        self.btn_send_code = QPushButton("📨 Send Login Code ➔")
+        self.btn_send_code = QPushButton("Send Login Code")
         self.btn_send_code.setObjectName("primaryButton")
         self.btn_send_code.clicked.connect(self._on_send_code)
         layout.addWidget(self.btn_send_code)
 
-        self.btn_edit_api = QPushButton("⚙️ Edit API Credentials")
-        self.btn_edit_api.clicked.connect(lambda: self.set_step(0, "🔑 Configure Telegram API", "Edit local API ID and Hash"))
+        self.btn_edit_api = QPushButton("Edit API Credentials")
+        self.btn_edit_api.clicked.connect(lambda: self.set_step(0, "Configure Telegram API", "Edit local API ID and Hash"))
         layout.addWidget(self.btn_edit_api)
 
         return widget
@@ -188,22 +188,22 @@ class InlineAuthWidget(QWidget):
         """Send verification code request."""
         phone = self.phone_input.text().strip()
         if not phone:
-            self.show_error("❌ Please enter a valid phone number.")
+            self.show_error("Please enter a valid phone number.")
             return
 
         self.btn_send_code.setEnabled(False)
-        self.show_info("⏳ Sending verification code from Telegram...")
+        self.show_info("Sending verification code from Telegram...")
 
         def on_success(_hash):
             self.btn_send_code.setEnabled(True)
             self._current_phone = phone
             self.clear_banner()
-            self.set_step(2, "✉️ Enter Verification Code", f"Verification code sent to {phone}")
+            self.set_step(2, "Enter Verification Code", f"Verification code sent to {phone}")
             self.code_input.setFocus()
 
         def on_error(exc):
             self.btn_send_code.setEnabled(True)
-            self.show_error(f"❌ {exc}")
+            self.show_error(str(exc))
 
         async_runner.run_coroutine_async(
             self.auth_service.send_code(phone),
@@ -218,9 +218,9 @@ class InlineAuthWidget(QWidget):
         layout.setSpacing(12)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        layout.addWidget(QLabel("✉️ Verification Code:"))
+        layout.addWidget(QLabel("Verification Code:"))
         self.code_input = QLineEdit()
-        self.code_input.setPlaceholderText("OTP code")
+        self.code_input.setPlaceholderText("Code")
         code_font = QFont()
         code_font.setPointSize(16)
         code_font.setLetterSpacing(QFont.AbsoluteSpacing, 4)
@@ -230,17 +230,17 @@ class InlineAuthWidget(QWidget):
         layout.addWidget(self.code_input)
 
         layout.addSpacing(6)
-        self.btn_submit_code = QPushButton("✅ Verify Code & Sign In")
+        self.btn_submit_code = QPushButton("Verify Code & Sign In")
         self.btn_submit_code.setObjectName("primaryButton")
         self.btn_submit_code.clicked.connect(self._on_submit_code)
         layout.addWidget(self.btn_submit_code)
 
         actions_layout = QHBoxLayout()
-        self.btn_back_phone = QPushButton("◀ Change Phone")
-        self.btn_back_phone.clicked.connect(lambda: self.set_step(1, "📱 Enter Phone Number", "Re-enter phone number"))
+        self.btn_back_phone = QPushButton("Change Phone")
+        self.btn_back_phone.clicked.connect(lambda: self.set_step(1, "Enter Phone Number", "Re-enter phone number"))
         actions_layout.addWidget(self.btn_back_phone)
 
-        self.btn_resend_code = QPushButton("🔄 Resend Code")
+        self.btn_resend_code = QPushButton("Resend Code")
         self.btn_resend_code.clicked.connect(self._on_send_code)
         actions_layout.addWidget(self.btn_resend_code)
         layout.addLayout(actions_layout)
@@ -251,11 +251,11 @@ class InlineAuthWidget(QWidget):
         """Submit OTP code."""
         code = self.code_input.text().strip()
         if not code:
-            self.show_error("❌ Please enter the verification code.")
+            self.show_error("Please enter the verification code.")
             return
 
         self.btn_submit_code.setEnabled(False)
-        self.show_info("⏳ Verifying code...")
+        self.show_info("Verifying code...")
 
         def on_success(user_dict):
             self.btn_submit_code.setEnabled(True)
@@ -272,10 +272,10 @@ class InlineAuthWidget(QWidget):
                 or "password is required" in str(exc).lower()
             ):
                 self.clear_banner()
-                self.set_step(3, "🔒 Two-Step Verification", "Enter your Telegram 2FA cloud password")
+                self.set_step(3, "Two-Step Verification", "Enter your Telegram 2FA cloud password")
                 self.password_input.setFocus()
             else:
-                self.show_error(f"❌ {exc}")
+                self.show_error(str(exc))
 
         async_runner.run_coroutine_async(
             self.auth_service.sign_in_with_code(code),
@@ -291,14 +291,14 @@ class InlineAuthWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
 
         info_box = QLabel(
-            "🛡️ <b>Two-Step Verification Enabled</b><br>"
-            "<small style='color: #949ba4;'>Your cloud password is verified locally via MTProto SRP and never saved to disk.</small>"
+            "<b>Two-Step Verification Enabled</b><br>"
+            "<small style='color: #71717A;'>Your cloud password is verified locally via MTProto SRP and never saved to disk.</small>"
         )
         info_box.setWordWrap(True)
-        info_box.setStyleSheet("background-color: #2b2d31; padding: 10px; border-radius: 6px; font-size: 12px;")
+        info_box.setStyleSheet("background-color: #18181B; padding: 10px; border-radius: 6px; border: 1px solid #27272A; font-size: 12px;")
         layout.addWidget(info_box)
 
-        layout.addWidget(QLabel("🔒 Cloud Password:"))
+        layout.addWidget(QLabel("Cloud Password:"))
         self.password_input = QLineEdit()
         self.password_input.setEchoMode(QLineEdit.Password)
         self.password_input.setPlaceholderText("Enter your 2FA password")
@@ -306,13 +306,13 @@ class InlineAuthWidget(QWidget):
         layout.addWidget(self.password_input)
 
         layout.addSpacing(6)
-        self.btn_submit_2fa = QPushButton("🔓 Unlock Account & Sign In")
+        self.btn_submit_2fa = QPushButton("Unlock Account & Sign In")
         self.btn_submit_2fa.setObjectName("primaryButton")
         self.btn_submit_2fa.clicked.connect(self._on_submit_password)
         layout.addWidget(self.btn_submit_2fa)
 
-        self.btn_back_to_code = QPushButton("◀ Back to Code")
-        self.btn_back_to_code.clicked.connect(lambda: self.set_step(2, "✉️ Enter Verification Code", "Back to code step"))
+        self.btn_back_to_code = QPushButton("Back to Code")
+        self.btn_back_to_code.clicked.connect(lambda: self.set_step(2, "Enter Verification Code", "Back to code step"))
         layout.addWidget(self.btn_back_to_code)
 
         return widget
@@ -321,11 +321,11 @@ class InlineAuthWidget(QWidget):
         """Submit 2FA password."""
         password = self.password_input.text()
         if not password:
-            self.show_error("❌ Please enter your 2FA password.")
+            self.show_error("Please enter your 2FA password.")
             return
 
         self.btn_submit_2fa.setEnabled(False)
-        self.show_info("⏳ Verifying 2FA password...")
+        self.show_info("Verifying 2FA password...")
 
         def on_success(user_dict):
             self.password_input.clear()
@@ -341,9 +341,9 @@ class InlineAuthWidget(QWidget):
                 or "PasswordHashInvalidError" in type(exc).__name__
                 or "password is invalid" in str(exc).lower()
             ):
-                self.show_error("❌ Invalid 2FA password. Please check your password and try again.")
+                self.show_error("Invalid 2FA password. Please check your password and try again.")
             else:
-                self.show_error(f"❌ 2FA verification error: {exc}")
+                self.show_error(f"2FA verification error: {exc}")
 
         async_runner.run_coroutine_async(
             self.auth_service.sign_in_with_password(password),
@@ -362,35 +362,35 @@ class InlineAuthWidget(QWidget):
         for idx, lbl in enumerate(self.step_labels):
             if idx == step_idx:
                 lbl.setStyleSheet(
-                    "background-color: #5865f2; color: #ffffff; border-radius: 10px; "
-                    "padding: 4px 10px; font-weight: bold; font-size: 11px;"
+                    "background-color: #229ED9; color: #FFFFFF; border-radius: 4px; "
+                    "padding: 3px 8px; font-weight: 600; font-size: 11px;"
                 )
             elif idx < step_idx:
                 lbl.setStyleSheet(
-                    "background-color: #248046; color: #ffffff; border-radius: 10px; "
-                    "padding: 4px 10px; font-size: 11px;"
+                    "background-color: #27272A; color: #22C55E; border-radius: 4px; "
+                    "padding: 3px 8px; font-size: 11px; font-weight: 500;"
                 )
             else:
                 lbl.setStyleSheet(
-                    "background-color: #2b2d31; color: #949ba4; border-radius: 10px; "
-                    "padding: 4px 10px; font-size: 11px;"
+                    "background-color: #18181B; color: #71717A; border-radius: 4px; "
+                    "padding: 3px 8px; font-size: 11px;"
                 )
 
     def show_error(self, message: str):
-        """Display an error message banner with icon."""
+        """Display an error message banner."""
         self.banner.setText(message)
         self.banner.setStyleSheet(
-            "background-color: #421d24; color: #f23f43; border: 1px solid #da373c; "
-            "border-radius: 6px; padding: 10px; font-size: 12px; font-weight: 500;"
+            "background-color: #7F1D1D; color: #FECACA; border: 1px solid #991B1B; "
+            "border-radius: 6px; padding: 8px 12px; font-size: 12px; font-weight: 500;"
         )
         self.banner.setVisible(True)
 
     def show_info(self, message: str):
-        """Display an info or progress banner with icon."""
+        """Display an info or progress banner."""
         self.banner.setText(message)
         self.banner.setStyleSheet(
-            "background-color: #1e293b; color: #38bdf8; border: 1px solid #0284c7; "
-            "border-radius: 6px; padding: 10px; font-size: 12px; font-weight: 500;"
+            "background-color: #1E293B; color: #38BDF8; border: 1px solid #0284C7; "
+            "border-radius: 6px; padding: 8px 12px; font-size: 12px; font-weight: 500;"
         )
         self.banner.setVisible(True)
 
@@ -402,9 +402,9 @@ class InlineAuthWidget(QWidget):
     def _set_initial_state(self):
         """Determine initial step based on configuration state."""
         if settings.is_telegram_configured:
-            self.set_step(1, "📱 Enter Phone Number", "Sign in with your Telegram account")
+            self.set_step(1, "Enter Phone Number", "Sign in with your Telegram account")
         else:
-            self.set_step(0, "🔑 Configure Telegram API", "Configure your API ID and Hash locally")
+            self.set_step(0, "Configure Telegram API", "Configure your API ID and Hash locally")
 
     def reset_to_initial(self):
         """Reset form inputs and return to starting step."""
@@ -412,3 +412,4 @@ class InlineAuthWidget(QWidget):
         self.code_input.clear()
         self.password_input.clear()
         self._set_initial_state()
+

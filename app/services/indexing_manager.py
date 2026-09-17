@@ -48,10 +48,11 @@ class IndexingManager(QObject):
 
     status_changed = Signal(str)            # Emits IndexingStatus value
     progress_updated = Signal(object)       # Emits IndexingProgress
-    chat_started = Signal(str, int, int)    # Emits (chat_title, chat_index, total_chats)
-    chat_completed = Signal(str, int)       # Emits (chat_title, files_indexed)
+    chat_started = Signal(str, object, object) # Emits (chat_title, chat_index, total_chats)
+    chat_completed = Signal(str, object)    # Emits (chat_title, files_indexed)
+    batch_discovered = Signal(object, object) # Emits (chat_id, List[MediaFileMetadata])
     log_emitted = Signal(str)               # Emits timestamped activity message
-    indexing_finished = Signal(int, bool)   # Emits (total_files_indexed, is_cancelled)
+    indexing_finished = Signal(object, bool) # Emits (total_files_indexed, is_cancelled)
 
     def __init__(self, client_manager: TelegramClientManager, db_path: Optional[Path] = None):
         super().__init__()
