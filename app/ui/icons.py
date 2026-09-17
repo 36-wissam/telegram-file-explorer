@@ -71,6 +71,7 @@ SVG_ICONS: Dict[str, str] = {
 }
 
 _pixmap_cache: Dict[str, QPixmap] = {}
+_icon_cache: Dict[str, QIcon] = {}
 
 
 def get_pixmap(name: str, color: str = "#F4F4F5", size: int = 16) -> QPixmap:
@@ -105,6 +106,40 @@ def get_pixmap(name: str, color: str = "#F4F4F5", size: int = 16) -> QPixmap:
 
 
 def get_icon(name: str, color: str = "#F4F4F5", size: int = 16) -> QIcon:
-    """Render and return a QIcon of the requested SVG icon."""
+    """Render and return a cached QIcon of the requested SVG icon."""
+    if isinstance(color, int) and isinstance(size, str):
+        color, size = size, color
+    elif isinstance(color, int):
+        size = color
+        color = "#F4F4F5"
+    cache_key = f"{name}:{color}:{size}"
+    if cache_key in _icon_cache:
+        return _icon_cache[cache_key]
+
     pixmap = get_pixmap(name, color=color, size=size)
-    return QIcon(pixmap)
+    icon = QIcon(pixmap)
+    _icon_cache[cache_key] = icon
+    return icon
+
+
+def prewarm_icon_cache():
+    """Precompute icons for common theme colors and sizes to eliminate theme switch lag."""
+    from .theme_manager import DARK_TOKENS, LIGHT_TOKENS
+    colors = [
+        DARK_TOKENS["text_primary"],
+        DARK_TOKENS["text_secondary"],
+        DARK_TOKENS["text_tertiary"],
+        DARK_TOKENS["accent"],
+        LIGHT_TOKENS["text_primary"],
+        LIGHT_TOKENS["text_secondary"],
+        LIGHT_TOKENS["text_tertiary"],
+        LIGHT_TOKENS["accent"],
+        "#FFFFFF",
+        "#A1A1AA",
+    ]
+    common_sizes = [14, 16, 18, 20, 24, 32, 34, 40]
+    for name in SVG_ICONS.keys():
+        for color in colors:
+            for size in common_sizes:
+                get_icon(name, color=color, size=size)
+

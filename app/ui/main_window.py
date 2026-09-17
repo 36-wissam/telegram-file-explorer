@@ -3,12 +3,20 @@
 import sys
 from pathlib import Path
 from typing import List, Optional
-from PySide6.QtCore import Qt, QTimer, QKeyCombination
+from PySide6.QtCore import (
+    QEasingCurve,
+    QKeyCombination,
+    QPropertyAnimation,
+    Qt,
+    QTimer,
+    QVariantAnimation,
+)
 from PySide6.QtGui import QAction, QFont, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
     QFrame,
+    QGraphicsOpacityEffect,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -34,13 +42,13 @@ from ..telegram.chats import TelegramChat, TelegramChatService
 from ..telegram.client import TelegramClientManager
 from .chat_list import ChatListWidget
 from .download_manager import DownloadManagerDialog
-from .icons import get_icon, get_pixmap
+from .icons import get_icon, get_pixmap, prewarm_icon_cache
 from .inline_auth import InlineAuthWidget
 from .media_browser import ChatMediaBrowserWidget
 from .preview_panel import PreviewDialog, PreviewPanel
 from .settings_dialog import SettingsDialog
 from .settings_panel import SettingsPanel
-from .theme_manager import theme_manager, DARK_TOKENS, LIGHT_TOKENS
+from .theme_manager import DARK_TOKENS, LIGHT_TOKENS, theme_manager
 from .styles import DARK_THEME, LIGHT_THEME
 
 logger = get_logger("ui.main_window")
@@ -60,6 +68,9 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(f"{settings.app_name} v{settings.app_version}")
         self.setMinimumSize(1100, 700)
         self.resize(1440, 900)
+
+        # Precompute icons to eliminate theme switch lag
+        prewarm_icon_cache()
 
         # Initialize core services
         self.client_manager = client_manager or TelegramClientManager(settings)
@@ -291,6 +302,9 @@ class MainWindow(QMainWindow):
         self.preview_panel.download_requested.connect(self._on_download_file)
         self.preview_panel.close_requested.connect(self._hide_preview_panel)
         self.preview_panel.hide()
+        self.preview_opacity = QGraphicsOpacityEffect(self.preview_panel)
+        self.preview_panel.setGraphicsEffect(self.preview_opacity)
+        self.preview_opacity.setOpacity(1.0)
         self.main_splitter.addWidget(self.preview_panel)
 
         # Index 3 (Right Edge): Settings Panel (320px, initially hidden)
@@ -298,6 +312,9 @@ class MainWindow(QMainWindow):
         self.settings_panel.close_requested.connect(self._hide_settings_panel)
         self.settings_panel.logout_requested.connect(self._on_logout)
         self.settings_panel.hide()
+        self.settings_opacity = QGraphicsOpacityEffect(self.settings_panel)
+        self.settings_panel.setGraphicsEffect(self.settings_opacity)
+        self.settings_opacity.setOpacity(1.0)
         self.main_splitter.addWidget(self.settings_panel)
 
         self.file_explorer_widget = self.media_browser
@@ -567,26 +584,114 @@ class MainWindow(QMainWindow):
         self.media_browser.set_chat(chat)
         self.status_bar.showMessage(f"Viewing media in {chat.display_name}")
 
+    # ==========================================
+    # Slide + Fade Animation Helpers
+    # ==========================================
+    def _animate_panel_slide_fade(
+        self,
+        panel: QWidget,
+        opacity_effect: QGraphicsOpacityEffect,
+        target_width: int,
+        target_opacity: float,
+        duration: int,
+        easing: QEasingCurve.Type,
+        panel_index: int,
+        on_complete=None,
+    ):
+        """Animate panel width and opacity with safety checks to prevent mid-flight stacking."""
+        if hasattr(panel, "_slide_anim") and panel._slide_anim:
+            panel._slide_anim.stop()
+        if hasattr(panel, "_fade_anim") and panel._fade_anim:
+            panel._fade_anim.stop()
+
+        is_opening = (target_width > 0)
+        if is_opening:
+            panel.show()
+
+        start_w = panel.width() if panel.isVisible() else 0
+        slide_anim = QVariantAnimation(panel)
+        slide_anim.setDuration(duration)
+        slide_anim.setEasingCurve(easing)
+        slide_anim.setStartValue(float(start_w))
+        slide_anim.setEndValue(float(target_width))
+
+        def on_step(val):
+            w = int(val)
+            panel.setFixedWidth(w)
+            sizes = self.main_splitter.sizes()
+            sidebar_w = sizes[0] if sizes else 280
+            total_w = sum(sizes)
+            if panel_index == 2:  # preview
+                self.main_splitter.setSizes([sidebar_w, max(300, total_w - sidebar_w - w), w, 0])
+            else:  # settings
+                self.main_splitter.setSizes([sidebar_w, max(300, total_w - sidebar_w - w), 0, w])
+
+        def on_finished():
+            if not is_opening:
+                panel.hide()
+                panel.setFixedWidth(320)
+                sizes = self.main_splitter.sizes()
+                sidebar_w = sizes[0] if sizes else 280
+                total_w = sum(sizes)
+                self.main_splitter.setSizes([sidebar_w, total_w - sidebar_w, 0, 0])
+            if on_complete:
+                on_complete()
+
+        slide_anim.valueChanged.connect(on_step)
+        slide_anim.finished.connect(on_finished)
+        panel._slide_anim = slide_anim
+
+        fade_anim = QPropertyAnimation(opacity_effect, b"opacity", panel)
+        fade_anim.setDuration(duration)
+        fade_anim.setEasingCurve(easing)
+        fade_anim.setStartValue(opacity_effect.opacity())
+        fade_anim.setEndValue(target_opacity)
+        panel._fade_anim = fade_anim
+
+        slide_anim.start()
+        fade_anim.start()
+
     def _toggle_settings_panel(self):
-        """Toggle right-docked Settings panel (pushes content, does not cover sidebar)."""
-        if self.settings_panel.isVisible():
+        """Toggle right-docked Settings panel with 200ms OutCubic open / 180ms InCubic close slide+fade."""
+        if self.settings_panel.isVisible() and self.settings_panel.width() > 0:
             self._hide_settings_panel()
         else:
-            self._hide_preview_panel()
-            self.settings_panel.show()
+            self._hide_preview_panel(immediate=True)
+            self._animate_panel_slide_fade(
+                self.settings_panel,
+                self.settings_opacity,
+                target_width=320,
+                target_opacity=1.0,
+                duration=200,
+                easing=QEasingCurve.Type.OutCubic,
+                panel_index=3,
+            )
+
+    def _hide_settings_panel(self, immediate: bool = False):
+        """Hide right-docked Settings panel with 180ms slide+fade."""
+        if immediate:
+            if hasattr(self.settings_panel, "_slide_anim") and self.settings_panel._slide_anim:
+                self.settings_panel._slide_anim.stop()
+            if hasattr(self.settings_panel, "_fade_anim") and self.settings_panel._fade_anim:
+                self.settings_panel._fade_anim.stop()
+            self.settings_panel.hide()
+            self.settings_opacity.setOpacity(0.0)
             self.settings_panel.setFixedWidth(320)
             sizes = self.main_splitter.sizes()
             sidebar_w = sizes[0] if sizes else 280
             total_w = sum(sizes)
-            self.main_splitter.setSizes([sidebar_w, max(400, total_w - sidebar_w - 320), 0, 320])
+            self.main_splitter.setSizes([sidebar_w, total_w - sidebar_w, 0, 0])
+            return
 
-    def _hide_settings_panel(self):
-        """Hide right-docked Settings panel and restore browser width."""
-        self.settings_panel.hide()
-        sizes = self.main_splitter.sizes()
-        sidebar_w = sizes[0] if sizes else 280
-        total_w = sum(sizes)
-        self.main_splitter.setSizes([sidebar_w, total_w - sidebar_w, 0, 0])
+        self._animate_panel_slide_fade(
+            self.settings_panel,
+            self.settings_opacity,
+            target_width=0,
+            target_opacity=0.0,
+            duration=180,
+            easing=QEasingCurve.Type.InCubic,
+            panel_index=3,
+        )
 
     def _on_chat_sidebar_collapsed(self, collapsed: bool):
         """Handle sidebar width collapse/expand."""
@@ -600,43 +705,69 @@ class MainWindow(QMainWindow):
             self.main_splitter.setSizes([sidebar_w, content_w, right_p, right_s])
 
     def _on_file_selected(self, file_model: Optional[IndexedFileModel]):
-        """Handle single-click selection on media file (opens persistent 320px right dock)."""
+        """Handle single-click selection on media file (opens persistent 320px right dock with slide+fade)."""
         if not file_model:
             self._hide_preview_panel()
             return
 
         self.status_bar.showMessage(f"Selected: {file_model.filename} ({file_model.media_type})")
-        self._hide_settings_panel()
+        self._hide_settings_panel(immediate=True)
         self.preview_panel.set_file(file_model)
-        self.preview_panel.show()
-        self.preview_panel.setFixedWidth(320)
-        sizes = self.main_splitter.sizes()
-        sidebar_w = sizes[0] if sizes else 280
-        total_w = sum(sizes)
-        self.main_splitter.setSizes([sidebar_w, max(400, total_w - sidebar_w - 320), 320, 0])
+
+        if not self.preview_panel.isVisible() or self.preview_panel.width() == 0:
+            self._animate_panel_slide_fade(
+                self.preview_panel,
+                self.preview_opacity,
+                target_width=320,
+                target_opacity=1.0,
+                duration=200,
+                easing=QEasingCurve.Type.OutCubic,
+                panel_index=2,
+            )
 
     def _toggle_preview_panel(self):
-        """Toggle right-docked preview inspector panel."""
-        if self.preview_panel.isVisible():
+        """Toggle right-docked preview inspector panel with slide+fade."""
+        if self.preview_panel.isVisible() and self.preview_panel.width() > 0:
             self._hide_preview_panel()
             if hasattr(self, "media_browser"):
                 self.media_browser.clear_selection()
         else:
-            self._hide_settings_panel()
-            self.preview_panel.show()
+            self._hide_settings_panel(immediate=True)
+            self._animate_panel_slide_fade(
+                self.preview_panel,
+                self.preview_opacity,
+                target_width=320,
+                target_opacity=1.0,
+                duration=200,
+                easing=QEasingCurve.Type.OutCubic,
+                panel_index=2,
+            )
+
+    def _hide_preview_panel(self, immediate: bool = False):
+        """Hide right-docked preview panel with 180ms slide+fade."""
+        if immediate:
+            if hasattr(self.preview_panel, "_slide_anim") and self.preview_panel._slide_anim:
+                self.preview_panel._slide_anim.stop()
+            if hasattr(self.preview_panel, "_fade_anim") and self.preview_panel._fade_anim:
+                self.preview_panel._fade_anim.stop()
+            self.preview_panel.hide()
+            self.preview_opacity.setOpacity(0.0)
             self.preview_panel.setFixedWidth(320)
             sizes = self.main_splitter.sizes()
             sidebar_w = sizes[0] if sizes else 280
             total_w = sum(sizes)
-            self.main_splitter.setSizes([sidebar_w, max(400, total_w - sidebar_w - 320), 320, 0])
+            self.main_splitter.setSizes([sidebar_w, total_w - sidebar_w, 0, 0])
+            return
 
-    def _hide_preview_panel(self):
-        """Hide right-docked preview panel and restore browser width."""
-        self.preview_panel.hide()
-        sizes = self.main_splitter.sizes()
-        sidebar_w = sizes[0] if sizes else 280
-        total_w = sum(sizes)
-        self.main_splitter.setSizes([sidebar_w, total_w - sidebar_w, 0, 0])
+        self._animate_panel_slide_fade(
+            self.preview_panel,
+            self.preview_opacity,
+            target_width=0,
+            target_opacity=0.0,
+            duration=180,
+            easing=QEasingCurve.Type.InCubic,
+            panel_index=2,
+        )
 
     def _on_escape_pressed(self):
         """Esc key closes whichever right panel is active and clears selection."""
