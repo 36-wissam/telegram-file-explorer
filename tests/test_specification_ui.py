@@ -168,3 +168,74 @@ def test_zero_emojis_in_all_ui_source_code():
             violations.append(f"{py_file.name}: found emojis {matches}")
 
     assert len(violations) == 0, f"Found emojis in source code: {violations}"
+
+
+def test_media_card_selected_state(qapp, sample_file):
+    """Verify MediaCardWidget selected state styling and toggle."""
+    card = MediaCardWidget(sample_file)
+    assert card._selected is False
+    card.set_selected(True)
+    assert card._selected is True
+    assert "2px solid #229ED9" in card.styleSheet()
+    card.set_selected(False)
+    assert card._selected is False
+    card.close()
+
+
+def test_skeleton_card_placeholder(qapp):
+    """Verify SkeletonCard placeholder rendering and animation."""
+    from app.ui.media_browser import SkeletonCard
+    skeleton = SkeletonCard()
+    skeleton.show()
+    assert skeleton._animating is True
+    assert skeleton.width() == 200
+    skeleton.close()
+
+
+def test_preview_panel_close_signal(qapp, sample_file):
+    """Verify PreviewPanel close_requested signal and inspector header."""
+    panel = PreviewPanel()
+    panel.show()
+    panel.set_file(sample_file)
+    assert panel.name_label.text() == "system_architecture.pdf"
+
+    closed = []
+    panel.close_requested.connect(lambda: closed.append(True))
+    panel._request_close()
+    assert len(closed) == 1
+    panel.close()
+
+
+def test_indexer_update_thumbnail_paths(tmp_path):
+    """Verify MediaIndexerService update_thumbnail_paths updates SQLite correctly."""
+    from app.services.indexer import MediaIndexerService
+    from app.services.media_parser import MediaFileMetadata, MediaType
+
+    db_path = tmp_path / "indexer_test.db"
+    manager = MagicMock()
+    indexer = MediaIndexerService(client_manager=manager, db_path=db_path)
+
+    now = datetime.now(timezone.utc)
+    meta = MediaFileMetadata(
+        file_id="thumb_test_1",
+        message_id=10,
+        chat_id=-1005,
+        chat_title="Test Chat",
+        filename="photo.jpg",
+        extension=".jpg",
+        mime_type="image/jpeg",
+        file_size=1024,
+        media_type=MediaType.IMAGE,
+        message_date=now,
+        has_thumbnail=True,
+    )
+    indexer.save_file_metadata(meta)
+
+    files = indexer.get_indexed_files(chat_id=-1005)
+    assert len(files) == 1
+    assert files[0]["thumbnail_path"] is None
+
+    indexer.update_thumbnail_paths({"thumb_test_1": "/cached/thumb_test_1.jpg"})
+    files = indexer.get_indexed_files(chat_id=-1005)
+    assert files[0]["thumbnail_path"] == "/cached/thumb_test_1.jpg"
+

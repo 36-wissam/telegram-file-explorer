@@ -59,6 +59,44 @@ class PreviewService:
 
         return None
 
+    async def fetch_thumbnails_batch(self, items: list) -> dict:
+        """Fetch thumbnails for a batch of indexed files.
+        
+        Args:
+            items: List of dicts/objects with chat_id, message_id, file_id, has_thumbnail fields
+        
+        Returns:
+            Dict mapping file_id -> thumbnail_path for successfully fetched thumbnails
+        """
+        results = {}
+        client = self.manager.client
+        if not client or not client.is_connected():
+            return results
+        
+        for item in items:
+            file_id = item.file_id if hasattr(item, 'file_id') else item.get('file_id')
+            has_thumb = item.has_thumbnail if hasattr(item, 'has_thumbnail') else item.get('has_thumbnail', False)
+            
+            if not has_thumb or not file_id:
+                continue
+                
+            # Skip if already cached
+            if self.has_cached_thumbnail(file_id):
+                results[file_id] = str(self.get_thumbnail_path(file_id))
+                continue
+            
+            chat_id = item.chat_id if hasattr(item, 'chat_id') else item.get('chat_id')
+            message_id = item.message_id if hasattr(item, 'message_id') else item.get('message_id')
+            
+            try:
+                path = await self.fetch_thumbnail(chat_id, message_id, file_id)
+                if path:
+                    results[file_id] = path
+            except Exception as e:
+                logger.debug("Batch thumbnail fetch failed for %s: %s", file_id, e)
+        
+        return results
+
     @staticmethod
     def open_in_system_viewer(file_path: str) -> bool:
         """Open a local file in the system default application (e.g. PDF viewer, photo viewer)."""

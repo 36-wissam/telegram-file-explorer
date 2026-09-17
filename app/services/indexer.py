@@ -355,3 +355,19 @@ class MediaIndexerService:
         with self._get_connection() as conn:
             row = conn.execute(query, params).fetchone()
             return row["cnt"] if row else 0
+
+    def update_thumbnail_paths(self, updates: dict) -> None:
+        """Update thumbnail_path for files by file_id.
+        
+        Args:
+            updates: Dict mapping file_id -> thumbnail_path
+        """
+        if not updates:
+            return
+        with self._get_connection() as conn:
+            for file_id, thumb_path in updates.items():
+                conn.execute(
+                    "UPDATE indexed_files SET thumbnail_path = ? WHERE file_id = ?;",
+                    (thumb_path, file_id)
+                )
+            conn.commit()

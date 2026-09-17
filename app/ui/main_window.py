@@ -36,7 +36,7 @@ from .download_manager import DownloadManagerDialog
 from .icons import get_icon, get_pixmap
 from .inline_auth import InlineAuthWidget
 from .media_browser import ChatMediaBrowserWidget
-from .preview_panel import PreviewDialog
+from .preview_panel import PreviewDialog, PreviewPanel
 from .settings_dialog import SettingsDialog
 from .styles import DARK_THEME, LIGHT_THEME
 
@@ -178,6 +178,12 @@ class MainWindow(QMainWindow):
         shortcut_j = QShortcut(QKeySequence("Ctrl+J"), self)
         shortcut_j.activated.connect(self.open_download_manager)
 
+        shortcut_p = QShortcut(QKeySequence("Ctrl+P"), self)
+        shortcut_p.activated.connect(self._toggle_preview_panel)
+
+        shortcut_esc = QShortcut(QKeySequence("Esc"), self)
+        shortcut_esc.activated.connect(self._hide_preview_panel)
+
     def _init_ui(self):
         """Construct central stacked widget layout with TopBar and Workspaces."""
         self.central_stack = QStackedWidget(self)
@@ -224,21 +230,6 @@ class MainWindow(QMainWindow):
         title_label.setStyleSheet("color: #FFFFFF;")
         card_layout.addWidget(title_label)
 
-        subtitle_label = QLabel(
-            "Local-first Telegram MTProto file explorer, browser, and downloader."
-        )
-        subtitle_label.setAlignment(Qt.AlignCenter)
-        subtitle_label.setStyleSheet("color: #A1A1AA; font-size: 13px;")
-        card_layout.addWidget(subtitle_label)
-
-        privacy_badge = QLabel("100% Local-First: Credentials and sessions never leave your computer")
-        privacy_badge.setAlignment(Qt.AlignCenter)
-        privacy_badge.setStyleSheet(
-            "background-color: #111113; color: #22C55E; border: 1px solid #27272A; border-radius: 6px; "
-            "padding: 6px 12px; font-size: 11px; font-weight: 500;"
-        )
-        card_layout.addWidget(privacy_badge)
-
         # Embedded Inline Authentication Widget
         self.auth_widget = InlineAuthWidget(self.auth_service, parent=self)
         self.auth_widget.authenticated.connect(self._on_login_success)
@@ -281,13 +272,21 @@ class MainWindow(QMainWindow):
         )
         self.media_browser.file_selected.connect(self._on_file_selected)
         self.media_browser.file_double_clicked.connect(self._on_file_double_clicked)
+        self.media_browser.set_client_manager(self.client_manager)
         self.main_splitter.addWidget(self.media_browser)
+
+        self.preview_panel = PreviewPanel()
+        self.preview_panel.download_requested.connect(self._on_download_file)
+        self.preview_panel.close_requested.connect(self._hide_preview_panel)
+        self.main_splitter.addWidget(self.preview_panel)
 
         self.file_explorer_widget = self.media_browser
         self.view_stack = self.media_browser.view_stack
 
+        self.main_splitter.setSizes([280, 800, 0])
         self.main_splitter.setStretchFactor(0, 0)
         self.main_splitter.setStretchFactor(1, 1)
+        self.main_splitter.setStretchFactor(2, 0)
 
         page_layout.addWidget(self.main_splitter)
         return page
@@ -361,18 +360,18 @@ class MainWindow(QMainWindow):
         self.btn_settings.clicked.connect(self.open_settings_dialog)
         layout.addWidget(self.btn_settings)
 
+        # Toggle Preview Button
+        self.btn_toggle_preview = QPushButton()
+        self.btn_toggle_preview.setObjectName("secondaryButton")
+        self.btn_toggle_preview.setIcon(get_icon("panel_right", color="#A1A1AA", size=14))
+        self.btn_toggle_preview.setToolTip("Toggle Inspector Panel")
+        self.btn_toggle_preview.clicked.connect(self._toggle_preview_panel)
+        layout.addWidget(self.btn_toggle_preview)
+
         # User Profile Label
         self.lbl_user_name = QLabel("")
         self.lbl_user_name.setStyleSheet("color: #229ED9; font-weight: 500; font-size: 12px; padding: 0 4px;")
         layout.addWidget(self.lbl_user_name)
-
-        # Logout / Switch Account Button
-        self.btn_logout = QPushButton("Sign Out")
-        self.btn_logout.setObjectName("secondaryButton")
-        self.btn_logout.setIcon(get_icon("log_out", color="#A1A1AA", size=14))
-        self.btn_logout.setToolTip("Sign out from Telegram")
-        self.btn_logout.clicked.connect(self._on_logout)
-        layout.addWidget(self.btn_logout)
 
         return top_bar
 
@@ -507,6 +506,24 @@ class MainWindow(QMainWindow):
     def _on_file_selected(self, file_model: IndexedFileModel):
         """Handle single-click selection on media file."""
         self.status_bar.showMessage(f"Selected: {file_model.filename} ({file_model.media_type})")
+        if hasattr(self, 'preview_panel'):
+            self.preview_panel.set_file(file_model)
+            # Show panel if hidden
+            sizes = self.main_splitter.sizes()
+            if sizes[2] == 0:
+                self.main_splitter.setSizes([280, sizes[1] - 320, 320])
+
+    def _toggle_preview_panel(self):
+        sizes = self.main_splitter.sizes()
+        if sizes[2] == 0:
+            self.main_splitter.setSizes([280, sizes[1] - 320, 320])
+        else:
+            self.main_splitter.setSizes([280, sizes[1] + sizes[2], 0])
+
+    def _hide_preview_panel(self):
+        sizes = self.main_splitter.sizes()
+        if sizes[2] > 0:
+            self.main_splitter.setSizes([280, sizes[1] + sizes[2], 0])
 
     def _on_file_double_clicked(self, file_model: IndexedFileModel):
         """Open detailed media preview dialog on double click."""

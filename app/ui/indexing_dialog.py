@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
 from ..core.logger import get_logger
 from ..services.indexing_manager import IndexingManager, IndexingProgress, IndexingStatus
 from ..telegram.chats import TelegramChat
+from .icons import get_icon
 
 logger = get_logger("ui.indexing_dialog")
 
@@ -243,7 +244,8 @@ class IndexingDialog(QDialog):
         btn_layout = QHBoxLayout()
         btn_layout.setSpacing(10)
 
-        self.btn_start = QPushButton("▶ Start Indexing")
+        self.btn_start = QPushButton("Start Indexing")
+        self.btn_start.setIcon(get_icon('play', color='#ffffff', size=14))
         self.btn_start.setStyleSheet(
             """
             QPushButton {
@@ -261,7 +263,8 @@ class IndexingDialog(QDialog):
         self.btn_start.clicked.connect(self._on_start_clicked)
         btn_layout.addWidget(self.btn_start)
 
-        self.btn_pause = QPushButton("⏸ Pause")
+        self.btn_pause = QPushButton("Pause")
+        self.btn_pause.setIcon(get_icon('pause', color='#ffffff', size=14))
         self.btn_pause.setStyleSheet(
             """
             QPushButton {
@@ -280,7 +283,8 @@ class IndexingDialog(QDialog):
         self.btn_pause.clicked.connect(self._on_pause_clicked)
         btn_layout.addWidget(self.btn_pause)
 
-        self.btn_cancel = QPushButton("⏹ Cancel")
+        self.btn_cancel = QPushButton("Cancel")
+        self.btn_cancel.setIcon(get_icon('square', color='#ffffff', size=14))
         self.btn_cancel.setStyleSheet(
             """
             QPushButton {
@@ -337,10 +341,8 @@ class IndexingDialog(QDialog):
     def _on_pause_clicked(self):
         if self.manager.is_paused:
             self.manager.resume_indexing()
-            self.btn_pause.setText("⏸ Pause")
         else:
             self.manager.pause_indexing()
-            self.btn_pause.setText("▶ Resume")
         self._update_controls_state()
 
     def _on_cancel_clicked(self):
@@ -404,6 +406,8 @@ class IndexingDialog(QDialog):
         self.chk_reindex.setEnabled(not busy)
 
         if is_paused:
-            self.btn_pause.setText("▶ Resume")
+            self.btn_pause.setText("Resume")
+            self.btn_pause.setIcon(get_icon('play', color='#ffffff', size=14))
         else:
-            self.btn_pause.setText("⏸ Pause")
+            self.btn_pause.setText("Pause")
+            self.btn_pause.setIcon(get_icon('pause', color='#ffffff', size=14))

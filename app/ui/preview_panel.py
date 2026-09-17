@@ -33,6 +33,7 @@ class PreviewPanel(QWidget):
 
     download_requested = Signal(object)  # Emits IndexedFileModel
     open_file_requested = Signal(str)   # Emits local file path
+    close_requested = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -41,6 +42,9 @@ class PreviewPanel(QWidget):
         self.setMaximumWidth(360)
         self._init_ui()
 
+    def _request_close(self):
+        self.close_requested.emit()
+
     def _init_ui(self):
         self.setStyleSheet("background-color: #18181B; border-left: 1px solid #27272A;")
         layout = QVBoxLayout(self)
@@ -48,8 +52,27 @@ class PreviewPanel(QWidget):
         layout.setSpacing(14)
         layout.setAlignment(Qt.AlignTop)
 
-        # Container Frame
-        self.frame = QFrame(self)
+        # Header Row
+        header_row = QHBoxLayout()
+        header_label = QLabel("Inspector")
+        header_label.setStyleSheet("font-size: 13px; font-weight: 600; color: #F4F4F5;")
+        header_row.addWidget(header_label)
+        header_row.addStretch()
+        close_btn = QPushButton()
+        close_btn.setIcon(get_icon('x', color='#A1A1AA', size=14))
+        close_btn.setFixedSize(28, 28)
+        close_btn.setStyleSheet("background: transparent; border: none;")
+        close_btn.setToolTip("Close inspector panel")
+        close_btn.clicked.connect(self._request_close)
+        header_row.addWidget(close_btn)
+        layout.addLayout(header_row)
+
+        # Container Frame wrapped in QScrollArea
+        self.scroll_area = QScrollArea(self)
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setStyleSheet("QScrollArea { border: none; background-color: transparent; }")
+        
+        self.frame = QFrame()
         self.frame.setStyleSheet(
             """
             QFrame {
@@ -60,6 +83,7 @@ class PreviewPanel(QWidget):
             }
             """
         )
+        self.scroll_area.setWidget(self.frame)
         f_layout = QVBoxLayout(self.frame)
         f_layout.setSpacing(12)
         f_layout.setAlignment(Qt.AlignTop)
@@ -152,8 +176,7 @@ class PreviewPanel(QWidget):
         self.btn_open.setVisible(False)
         f_layout.addWidget(self.btn_open)
 
-        layout.addWidget(self.frame)
-        layout.addStretch()
+        layout.addWidget(self.scroll_area)
 
     def set_file(self, file_model: Optional[IndexedFileModel], thumbnail_path: Optional[str] = None):
         """Update preview panel with selected file."""

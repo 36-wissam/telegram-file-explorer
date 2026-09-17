@@ -439,7 +439,7 @@ class SettingsDialog(QDialog):
         PreviewService.open_in_system_viewer(str(settings.download_dir))
 
     def _get_cache_size_str(self) -> str:
-        cache_dir = settings.thumbnail_dir
+        cache_dir = settings.data_dir / 'cache' / 'thumbnails'
         if not cache_dir.exists():
             return "0 KB"
         total = sum(f.stat().st_size for f in cache_dir.glob("*") if f.is_file())
@@ -449,7 +449,7 @@ class SettingsDialog(QDialog):
         return f"{total / 1024:.1f} KB"
 
     def _on_clear_cache(self):
-        cache_dir = settings.thumbnail_dir
+        cache_dir = settings.data_dir / 'cache' / 'thumbnails'
         if cache_dir.exists():
             for f in cache_dir.glob("*"):
                 if f.is_file():
@@ -470,11 +470,12 @@ class SettingsDialog(QDialog):
         )
         if confirm == QMessageBox.Yes:
             try:
-                with self.repo._get_conn() as conn:
-                    conn.execute("DELETE FROM files")
-                    conn.execute("DELETE FROM chats")
-                    conn.execute("DELETE FROM sync_state")
-                    conn.commit()
+                from ..database.connection import session_scope
+                from ..database.models import IndexedFileModel, IndexingStateModel
+                with session_scope() as session:
+                    session.query(IndexedFileModel).delete()
+                    session.query(IndexingStateModel).delete()
+                    session.commit()
                 QMessageBox.information(self, "Database Cleared", "Local media metadata has been cleared.")
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to clear database: {e}")

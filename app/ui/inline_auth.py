@@ -43,43 +43,13 @@ class InlineAuthWidget(QWidget):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(16)
 
-        # Step Breadcrumb Indicator
-        self.breadcrumb_layout = QHBoxLayout()
-        self.breadcrumb_layout.setSpacing(8)
-        self.breadcrumb_layout.setAlignment(Qt.AlignCenter)
-
-        self.step_labels = []
-        steps = [
-            ("1. API", "Configure Telegram MTProto API"),
-            ("2. Phone", "Enter Telegram phone number"),
-            ("3. Code", "Enter verification code"),
-            ("4. 2FA", "Two-step verification"),
-        ]
-
-        for idx, (label_text, tooltip) in enumerate(steps):
-            lbl = QLabel(label_text)
-            lbl.setToolTip(tooltip)
-            lbl.setAlignment(Qt.AlignCenter)
-            self.step_labels.append(lbl)
-            self.breadcrumb_layout.addWidget(lbl)
-            if idx < len(steps) - 1:
-                sep = QLabel("-")
-                sep.setStyleSheet("color: #71717A; font-size: 11px; font-weight: bold;")
-                self.breadcrumb_layout.addWidget(sep)
-
-        main_layout.addLayout(self.breadcrumb_layout)
-
-        # Step Header (Title + Subtitle)
-        self.step_title = QLabel("Sign in to Telegram")
-        self.step_title.setAlignment(Qt.AlignCenter)
-        self.step_title.setStyleSheet("font-size: 16px; font-weight: 600; color: #F4F4F5;")
-        main_layout.addWidget(self.step_title)
-
-        self.step_subtitle = QLabel("")
-        self.step_subtitle.setAlignment(Qt.AlignCenter)
-        self.step_subtitle.setStyleSheet("font-size: 12px; color: #A1A1AA;")
-        self.step_subtitle.setWordWrap(True)
-        main_layout.addWidget(self.step_subtitle)
+        # Simple Instruction / Step Title Label
+        self.instruction_label = QLabel("Sign in to Telegram")
+        self.instruction_label.setAlignment(Qt.AlignCenter)
+        self.instruction_label.setStyleSheet("font-size: 16px; font-weight: 600; color: #F4F4F5;")
+        self.step_title = self.instruction_label
+        self.step_labels = [QLabel(f"{i+1}") for i in range(4)]
+        main_layout.addWidget(self.instruction_label)
 
         # Message / Error Banner
         self.banner = QLabel()
@@ -353,28 +323,9 @@ class InlineAuthWidget(QWidget):
 
     # --- State Management & UI Helpers ---
     def set_step(self, step_idx: int, title: str, subtitle: str):
-        """Switch current step and update breadcrumbs and titles."""
+        """Switch current step and update title."""
         self.stack.setCurrentIndex(step_idx)
-        self.step_title.setText(title)
-        self.step_subtitle.setText(subtitle)
-
-        # Update breadcrumbs
-        for idx, lbl in enumerate(self.step_labels):
-            if idx == step_idx:
-                lbl.setStyleSheet(
-                    "background-color: #229ED9; color: #FFFFFF; border-radius: 4px; "
-                    "padding: 3px 8px; font-weight: 600; font-size: 11px;"
-                )
-            elif idx < step_idx:
-                lbl.setStyleSheet(
-                    "background-color: #27272A; color: #22C55E; border-radius: 4px; "
-                    "padding: 3px 8px; font-size: 11px; font-weight: 500;"
-                )
-            else:
-                lbl.setStyleSheet(
-                    "background-color: #18181B; color: #71717A; border-radius: 4px; "
-                    "padding: 3px 8px; font-size: 11px;"
-                )
+        self.instruction_label.setText(title)
 
     def show_error(self, message: str):
         """Display an error message banner."""

@@ -36,10 +36,34 @@ class MediaCardWidget(QFrame):
     def __init__(self, file_model: IndexedFileModel, parent=None):
         super().__init__(parent)
         self.file_model = file_model
+        self._selected = False
         self.setFixedWidth(200)
         self.setMinimumHeight(210)
         self.setCursor(Qt.PointingHandCursor)
         self._init_ui()
+
+    def set_selected(self, selected: bool):
+        self._selected = selected
+        if selected:
+            self.setStyleSheet("""
+                QFrame {
+                    background-color: #1C1C1F;
+                    border: 2px solid #229ED9;
+                    border-radius: 10px;
+                }
+            """)
+        else:
+            self.setStyleSheet("""
+                QFrame {
+                    background-color: #1C1C1F;
+                    border: 1px solid #3F3F46;
+                    border-radius: 10px;
+                }
+                QFrame:hover {
+                    border-color: #229ED9;
+                    background-color: #27272A;
+                }
+            """)
 
     def _init_ui(self):
         self.setStyleSheet(

@@ -29,6 +29,7 @@ from ..database.repository import DatabaseRepository
 from ..services.indexer import MediaIndexerService
 from ..services.media_parser import MediaType
 from ..services.search import SearchEngineService
+from ..services.preview import PreviewService
 from ..telegram.chats import ChatType, TelegramChat
 from .filter_bar import AdvancedFilterCriteria
 from .filter_dialog import FilterDialog
@@ -45,6 +46,66 @@ MEDIA_TABS = [
     ("Audio", "AUDIO"),
     ("Other", "OTHER"),
 ]
+
+
+class SkeletonCard(QFrame):
+    """Placeholder loading card shown during progressive media discovery."""
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedWidth(200)
+        self.setMinimumHeight(210)
+        self._opacity = 0.3
+        self._animating = True
+        self._init_ui()
+        self._start_animation()
+    
+    def _init_ui(self):
+        self.setStyleSheet("""
+            QFrame {
+                background-color: #1C1C1F;
+                border: 1px solid #27272A;
+                border-radius: 10px;
+            }
+        """)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(8)
+        
+        # Thumbnail placeholder
+        thumb = QLabel()
+        thumb.setFixedSize(180, 110)
+        thumb.setStyleSheet("background-color: #27272A; border-radius: 6px;")
+        layout.addWidget(thumb, alignment=Qt.AlignCenter)
+        
+        # Filename placeholder
+        name = QLabel()
+        name.setFixedSize(140, 14)
+        name.setStyleSheet("background-color: #27272A; border-radius: 3px;")
+        layout.addWidget(name)
+        
+        # Meta row placeholder
+        meta = QLabel()
+        meta.setFixedSize(100, 10)
+        meta.setStyleSheet("background-color: #27272A; border-radius: 3px;")
+        layout.addWidget(meta)
+    
+    def _start_animation(self):
+        self._pulse_timer = QTimer(self)
+        self._pulse_timer.setInterval(800)
+        self._pulse_timer.timeout.connect(self._pulse)
+        self._pulse_timer.start()
+    
+    def _pulse(self):
+        # Toggle between darker and lighter gray for pulse effect
+        if self._opacity < 0.5:
+            self._opacity = 0.6
+            bg = "#2A2A2E"
+        else:
+            self._opacity = 0.3
+            bg = "#27272A"
+        for child in self.findChildren(QLabel):
+            child.setStyleSheet(f"background-color: {bg}; border-radius: {6 if child.height() > 20 else 3}px;")
 
 
 class ChatMediaBrowserWidget(QWidget):
@@ -71,6 +132,7 @@ class ChatMediaBrowserWidget(QWidget):
         self._filter_criteria = AdvancedFilterCriteria()
         self._cached_files: List[IndexedFileModel] = []
         self._active_indexing_chats: Set[int] = set()
+        self.preview_service: Optional[PreviewService] = None
 
         # Debounce timer for instant search
         self._search_timer = QTimer(self)
@@ -78,7 +140,29 @@ class ChatMediaBrowserWidget(QWidget):
         self._search_timer.setInterval(200)
         self._search_timer.timeout.connect(self._execute_search)
 
+        # Debounce timer for resize
+        self._resize_timer = QTimer(self)
+        self._resize_timer.setSingleShot(True)
+        self._resize_timer.setInterval(100)
+        self._resize_timer.timeout.connect(self._on_resize_timeout)
+        
+        self._selected_card: Optional[MediaCardWidget] = None
+
         self._init_ui()
+
+    def set_client_manager(self, client_manager):
+        """Set client manager for thumbnail fetching."""
+        from ..services.preview import PreviewService
+        self.preview_service = PreviewService(client_manager)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if self._cached_files and self.btn_grid_view.isChecked():
+            self._resize_timer.start()
+
+    def _on_resize_timeout(self):
+        if self._cached_files and self.btn_grid_view.isChecked():
+            self._render_grid()
 
     def _init_ui(self):
         self.setStyleSheet("background-color: #111113;")
@@ -449,6 +533,7 @@ class ChatMediaBrowserWidget(QWidget):
 
         self._render_current_view()
         self.count_label.setText(f"{total_count} files")
+        self._fetch_missing_thumbnails()
 
     def _render_current_view(self):
         """Render files in active view mode (Grid or List)."""
@@ -471,19 +556,49 @@ class ChatMediaBrowserWidget(QWidget):
         else:
             self._render_table()
 
-    def _render_grid(self):
-        """Populate grid layout with 200px file cards."""
+    def _clear_grid(self):
         while self.grid_layout.count():
             item = self.grid_layout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
 
-        cols = 4
+    def _show_skeletons(self, count=8):
+        self._clear_grid()
+        available_width = self.grid_scroll.viewport().width() - 48
+        cols = max(1, available_width // 216)
+        for i in range(count):
+            row = i // cols
+            col = i % cols
+            skeleton = SkeletonCard()
+            self.grid_layout.addWidget(skeleton, row, col)
+        self.view_stack.setCurrentIndex(0)  # Show grid
+
+    def _on_card_clicked(self, file_model, card):
+        # Deselect previous
+        if self._selected_card:
+            self._selected_card.set_selected(False)
+        card.set_selected(True)
+        self._selected_card = card
+        self.file_selected.emit(file_model)
+
+    def _render_grid(self):
+        """Populate grid layout with 200px file cards."""
+        self._clear_grid()
+
+        # Dynamic column count based on container width
+        card_width = 200
+        spacing = 16
+        available_width = self.grid_scroll.viewport().width() - 48  # margins
+        cols = max(1, available_width // (card_width + spacing))
+        
         for i, file_item in enumerate(self._cached_files):
             row = i // cols
             col = i % cols
             card = MediaCardWidget(file_item)
-            card.clicked.connect(self.file_selected.emit)
+            if self._selected_card and self._selected_card.file_model.id == file_item.id:
+                card.set_selected(True)
+                self._selected_card = card
+            card.clicked.connect(lambda fm=file_item, c=card: self._on_card_clicked(fm, c))
             card.double_clicked.connect(self.file_double_clicked.emit)
             self.grid_layout.addWidget(card, row, col)
 
@@ -533,10 +648,17 @@ class ChatMediaBrowserWidget(QWidget):
         self._active_indexing_chats.add(chat_id)
         self.status_label.setText("Loading media…")
 
+        # Show skeleton cards if no cached data
+        if not self._cached_files:
+            self._show_skeletons()
+
         def on_batch_discovered(batch):
             if self.current_chat and self.current_chat.id == chat_id:
                 self.reload_files()
                 self.status_label.setText(f"Loading older media… ({len(self._cached_files)} files)")
+                # Fetch thumbnails for this batch
+                if self.preview_service:
+                    self._fetch_batch_thumbnails(batch, chat_id)
 
         def on_complete(result):
             self._active_indexing_chats.discard(chat_id)
@@ -559,6 +681,66 @@ class ChatMediaBrowserWidget(QWidget):
                 batch_discovered_callback=on_batch_discovered,
             ),
             callback=on_complete,
+            error_callback=on_error,
+        )
+
+    def _fetch_batch_thumbnails(self, batch, chat_id):
+        """Fetch thumbnails for a batch of discovered media files."""
+        if not self.preview_service:
+            return
+        
+        # Filter to items that have thumbnails
+        thumb_items = [item for item in batch if getattr(item, 'has_thumbnail', False)]
+        if not thumb_items:
+            return
+        
+        def on_thumbs_fetched(results):
+            if not results:
+                return
+            # Update database with thumbnail paths
+            if self.indexer_service:
+                self.indexer_service.update_thumbnail_paths(results)
+            # Refresh the grid to show thumbnails
+            if self.current_chat and self.current_chat.id == chat_id:
+                self.reload_files()
+        
+        def on_thumbs_error(exc):
+            logger.debug("Thumbnail batch fetch error: %s", exc)
+        
+        async_runner.run_coroutine_async(
+            self.preview_service.fetch_thumbnails_batch(thumb_items),
+            callback=on_thumbs_fetched,
+            error_callback=on_thumbs_error,
+        )
+
+    def _fetch_missing_thumbnails(self):
+        """Fetch thumbnails for cached files that have has_thumbnail=True but no thumbnail_path."""
+        if not self.preview_service or not self._cached_files:
+            return
+        
+        missing = [f for f in self._cached_files 
+                   if f.has_thumbnail and not f.thumbnail_path]
+        if not missing:
+            return
+        
+        # Limit batch to avoid overwhelming the API
+        batch = missing[:20]
+        chat_id = self.current_chat.id if self.current_chat else None
+        
+        def on_thumbs_fetched(results):
+            if not results:
+                return
+            if self.indexer_service:
+                self.indexer_service.update_thumbnail_paths(results)
+            if self.current_chat and self.current_chat.id == chat_id:
+                self.reload_files()
+        
+        def on_error(exc):
+            logger.debug("Missing thumbnail fetch error: %s", exc)
+        
+        async_runner.run_coroutine_async(
+            self.preview_service.fetch_thumbnails_batch(batch),
+            callback=on_thumbs_fetched,
             error_callback=on_error,
         )
 

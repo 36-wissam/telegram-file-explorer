@@ -279,6 +279,139 @@ QScrollBar::handle:horizontal:hover {
 QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
     width: 0px;
 }
+
+/* Preview Panel / Inspector Sidebar */
+QWidget#previewPanel {
+    background-color: #18181B;
+    border-left: 1px solid #27272A;
+}
+
+QWidget#previewPanel QLabel {
+    color: #F4F4F5;
+}
+
+QWidget#previewPanel QLabel#panelHeader {
+    font-size: 13px;
+    font-weight: 600;
+    color: #F4F4F5;
+}
+
+QWidget#previewPanel QLabel#metaLabel {
+    color: #A1A1AA;
+    font-size: 12px;
+}
+
+QWidget#previewPanel QLabel#metaValue {
+    color: #F4F4F5;
+    font-size: 12px;
+}
+
+/* Selected Media Card State */
+QFrame#selectedCard {
+    background-color: #1C1C1F;
+    border: 2px solid #229ED9;
+    border-radius: 10px;
+}
+
+/* Splitter Handle */
+QSplitter::handle {
+    background-color: #27272A;
+    width: 1px;
+}
+
+QSplitter::handle:hover {
+    background-color: #3F3F46;
+}
+
+/* Tooltips */
+QToolTip {
+    background-color: #27272A;
+    color: #F4F4F5;
+    border: 1px solid #3F3F46;
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: 12px;
+}
+
+/* Tab Widget */
+QTabWidget::pane {
+    border: none;
+    background-color: #111113;
+}
+
+QTabBar::tab {
+    background-color: #18181B;
+    color: #A1A1AA;
+    border: none;
+    border-bottom: 2px solid transparent;
+    padding: 8px 16px;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+QTabBar::tab:selected {
+    color: #229ED9;
+    border-bottom: 2px solid #229ED9;
+    font-weight: 600;
+}
+
+QTabBar::tab:hover:!selected {
+    color: #F4F4F5;
+}
+
+/* Group Box */
+QGroupBox {
+    border: 1px solid #27272A;
+    border-radius: 8px;
+    margin-top: 16px;
+    padding: 16px;
+    padding-top: 24px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #F4F4F5;
+}
+
+QGroupBox::title {
+    subcontrol-origin: margin;
+    subcontrol-position: top left;
+    left: 12px;
+    padding: 0 4px;
+    color: #229ED9;
+}
+
+/* Checkbox */
+QCheckBox {
+    color: #F4F4F5;
+    spacing: 8px;
+    font-size: 13px;
+}
+
+QCheckBox::indicator {
+    width: 16px;
+    height: 16px;
+    border: 1px solid #3F3F46;
+    border-radius: 4px;
+    background-color: #1C1C1F;
+}
+
+QCheckBox::indicator:checked {
+    background-color: #229ED9;
+    border-color: #229ED9;
+}
+
+/* Spin Box */
+QSpinBox, QDoubleSpinBox {
+    background-color: #1C1C1F;
+    color: #F4F4F5;
+    border: 1px solid #3F3F46;
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: 12px;
+}
+
+QSpinBox:focus, QDoubleSpinBox:focus {
+    border-color: #229ED9;
+}
 """
 
 LIGHT_THEME = """
@@ -559,6 +692,130 @@ QScrollBar::handle:horizontal:hover {
 
 QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
     width: 0px;
+}
+
+/* Preview Panel / Inspector Sidebar */
+QWidget#previewPanel {
+    background-color: #FFFFFF;
+    border-left: 1px solid #E4E4E7;
+}
+
+QWidget#previewPanel QLabel#panelHeader {
+    font-size: 13px;
+    font-weight: 600;
+    color: #18181B;
+}
+
+QWidget#previewPanel QLabel#metaLabel {
+    color: #71717A;
+    font-size: 12px;
+}
+
+/* Selected Media Card State */
+QFrame#selectedCard {
+    background-color: #FFFFFF;
+    border: 2px solid #229ED9;
+    border-radius: 10px;
+}
+
+/* Splitter Handle */
+QSplitter::handle {
+    background-color: #E4E4E7;
+    width: 1px;
+}
+
+QSplitter::handle:hover {
+    background-color: #A1A1AA;
+}
+
+/* Tooltips */
+QToolTip {
+    background-color: #FFFFFF;
+    color: #18181B;
+    border: 1px solid #E4E4E7;
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: 12px;
+}
+
+/* Tab Widget */
+QTabWidget::pane {
+    border: none;
+    background-color: #F7F7F8;
+}
+
+QTabBar::tab {
+    background-color: #FFFFFF;
+    color: #71717A;
+    border: none;
+    border-bottom: 2px solid transparent;
+    padding: 8px 16px;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+QTabBar::tab:selected {
+    color: #229ED9;
+    border-bottom: 2px solid #229ED9;
+    font-weight: 600;
+}
+
+QTabBar::tab:hover:!selected {
+    color: #18181B;
+}
+
+/* Group Box */
+QGroupBox {
+    border: 1px solid #E4E4E7;
+    border-radius: 8px;
+    margin-top: 16px;
+    padding: 16px;
+    padding-top: 24px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #18181B;
+}
+
+QGroupBox::title {
+    subcontrol-origin: margin;
+    subcontrol-position: top left;
+    left: 12px;
+    padding: 0 4px;
+    color: #229ED9;
+}
+
+/* Checkbox */
+QCheckBox {
+    color: #18181B;
+    spacing: 8px;
+    font-size: 13px;
+}
+
+QCheckBox::indicator {
+    width: 16px;
+    height: 16px;
+    border: 1px solid #E4E4E7;
+    border-radius: 4px;
+    background-color: #FFFFFF;
+}
+
+QCheckBox::indicator:checked {
+    background-color: #229ED9;
+    border-color: #229ED9;
+}
+
+/* Spin Box */
+QSpinBox, QDoubleSpinBox {
+    background-color: #FFFFFF;
+    color: #18181B;
+    border: 1px solid #E4E4E7;
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: 12px;
+}
+
+QSpinBox:focus, QDoubleSpinBox:focus {
+    border-color: #229ED9;
 }
 """
 

@@ -26,6 +26,15 @@ class DownloadStatus(str, Enum):
     FAILED = "Failed"
 
 
+def format_bytes(size: int) -> str:
+    """Format bytes into a human-readable string."""
+    for unit in ["B", "KB", "MB", "GB", "TB"]:
+        if size < 1024.0:
+            return f"{size:.1f} {unit}" if unit != "B" else f"{size} {unit}"
+        size /= 1024.0
+    return f"{size:.1f} PB"
+
+
 @dataclass
 class DownloadTask:
     """Represents an active or finished download task."""
@@ -48,17 +57,14 @@ class DownloadTask:
 
     @property
     def human_downloaded(self) -> str:
-        from ..ui.file_explorer import format_bytes
         return format_bytes(self.downloaded_bytes)
 
     @property
     def human_total(self) -> str:
-        from ..ui.file_explorer import format_bytes
         return format_bytes(self.total_bytes)
 
     @property
     def human_speed(self) -> str:
-        from ..ui.file_explorer import format_bytes
         return f"{format_bytes(int(self.speed_bytes_per_sec))}/s"
 
 
