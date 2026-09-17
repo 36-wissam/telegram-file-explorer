@@ -210,55 +210,127 @@ class MainWindow(QMainWindow):
         return page
 
     def _create_explorer_page(self) -> QWidget:
-        """Create split-pane chat discovery and file explorer page."""
-        page = QWidget()
-        page_layout = QVBoxLayout(page)
-        page_layout.setContentsMargins(0, 0, 0, 0)
-        page_layout.setSpacing(0)
+        """Create split-pane chat discovery and file explorer page matching SaaS layout."""
+        from .activity_rail import ActivityRailWidget
 
-        # Top Mode Switcher Bar
-        mode_bar = QFrame()
-        mode_bar.setStyleSheet(
+        page = QWidget()
+        page.setStyleSheet("background-color: #13141f;")
+        root_h_layout = QHBoxLayout(page)
+        root_h_layout.setContentsMargins(0, 0, 0, 0)
+        root_h_layout.setSpacing(0)
+
+        # 1. Leftmost Activity Icon Rail (~56px)
+        self.activity_rail = ActivityRailWidget(self)
+        self.activity_rail.nav_changed.connect(self._on_rail_nav)
+        self.activity_rail.profile_clicked.connect(self.open_login_dialog)
+        self.activity_rail.activity_clicked.connect(self.open_download_manager)
+        root_h_layout.addWidget(self.activity_rail)
+
+        # 2. Main Body Container (Header + Views)
+        body_widget = QWidget()
+        body_widget.setStyleSheet("background-color: #13141f;")
+        body_layout = QVBoxLayout(body_widget)
+        body_layout.setContentsMargins(0, 0, 0, 0)
+        body_layout.setSpacing(0)
+
+        # Top Breadcrumb & Action Header Bar
+        top_header = QFrame()
+        top_header.setFixedHeight(52)
+        top_header.setStyleSheet(
             """
             QFrame {
-                background-color: #18191c;
-                border-bottom: 1px solid #2b2d31;
-                padding: 4px 12px;
+                background-color: #1a1c29;
+                border-bottom: 1px solid #1e202e;
+                padding: 4px 16px;
             }
             """
         )
-        mb_layout = QHBoxLayout(mode_bar)
-        mb_layout.setContentsMargins(12, 4, 12, 4)
-        mb_layout.setSpacing(8)
+        th_layout = QHBoxLayout(top_header)
+        th_layout.setContentsMargins(16, 4, 16, 4)
+        th_layout.setSpacing(12)
 
-        self.btn_nav_chats = QPushButton("💬 Chats Discovery")
-        self.btn_nav_chats.setObjectName("primaryButton")
+        # Hamburger toggle
+        self.btn_hamburger = QPushButton("☰")
+        self.btn_hamburger.setFixedSize(32, 32)
+        self.btn_hamburger.setStyleSheet(
+            """
+            QPushButton {
+                background: transparent;
+                color: #94a3b8;
+                border: none;
+                font-size: 16px;
+                padding: 0;
+            }
+            QPushButton:hover {
+                color: #ffffff;
+            }
+            """
+        )
+        self.btn_hamburger.clicked.connect(lambda: self._switch_main_view(0 if self.view_stack.currentIndex() == 1 else 1))
+        th_layout.addWidget(self.btn_hamburger)
+
+        # Breadcrumbs
+        self.breadcrumb_label = QLabel("<b>All Chats</b>  ›  <b>Workspace</b>  ›  Media ▾")
+        self.breadcrumb_label.setStyleSheet("color: #94a3b8; font-size: 13px;")
+        th_layout.addWidget(self.breadcrumb_label)
+
+        th_layout.addStretch()
+
+        # View Mode Switchers for backwards compatibility
+        self.btn_nav_chats = QPushButton("💬 Chats")
+        self.btn_nav_chats.setObjectName("darkPillButton")
         self.btn_nav_chats.clicked.connect(lambda: self._switch_main_view(0))
-        mb_layout.addWidget(self.btn_nav_chats)
+        th_layout.addWidget(self.btn_nav_chats)
 
-        self.btn_nav_files = QPushButton("📂 File Explorer")
+        self.btn_nav_files = QPushButton("📂 Files")
+        self.btn_nav_files.setObjectName("darkPillButton")
         self.btn_nav_files.clicked.connect(lambda: self._switch_main_view(1))
-        mb_layout.addWidget(self.btn_nav_files)
+        th_layout.addWidget(self.btn_nav_files)
 
-        mb_layout.addSpacing(12)
-        self.btn_open_indexer = QPushButton("⚡ Index Media...")
-        self.btn_open_indexer.setStyleSheet("background-color: #2b2d31; color: #00aff4; font-weight: bold;")
+        # Avatar group stack
+        avatars_label = QLabel("👥")
+        avatars_label.setStyleSheet("font-size: 16px; color: #94a3b8; padding: 0 4px;")
+        avatars_label.setToolTip("Active Session")
+        th_layout.addWidget(avatars_label)
+
+        # Search icon button
+        self.btn_quick_search = QPushButton("🔍")
+        self.btn_quick_search.setFixedSize(32, 32)
+        self.btn_quick_search.setStyleSheet(
+            """
+            QPushButton {
+                background-color: #24273b;
+                color: #94a3b8;
+                border: 1px solid #2e3248;
+                border-radius: 6px;
+            }
+            QPushButton:hover {
+                background-color: #2f334d;
+                color: #ffffff;
+            }
+            """
+        )
+        self.btn_quick_search.clicked.connect(self._on_find_files)
+        th_layout.addWidget(self.btn_quick_search)
+
+        # Primary Action Button: ⚡ Index Media / Upload (Royal Blue)
+        self.btn_open_indexer = QPushButton("⚡ Index Media")
+        self.btn_open_indexer.setObjectName("primaryButton")
         self.btn_open_indexer.clicked.connect(lambda: self.open_indexing_manager())
-        mb_layout.addWidget(self.btn_open_indexer)
+        th_layout.addWidget(self.btn_open_indexer)
 
-        mb_layout.addStretch()
-        page_layout.addWidget(mode_bar)
+        body_layout.addWidget(top_header)
 
         # View Stack
         self.view_stack = QStackedWidget()
 
         # View 0: Chats & Chat Detail Splitter
         chat_splitter = QSplitter(Qt.Horizontal)
-        chat_splitter.setStyleSheet("QSplitter::handle { background-color: #2b2d31; width: 1px; }")
+        chat_splitter.setStyleSheet("QSplitter::handle { background-color: #1e202e; width: 1px; }")
 
         self.chat_list_widget = ChatListWidget()
-        self.chat_list_widget.setMinimumWidth(320)
-        self.chat_list_widget.setMaximumWidth(420)
+        self.chat_list_widget.setMinimumWidth(300)
+        self.chat_list_widget.setMaximumWidth(400)
         self.chat_list_widget.chat_selected.connect(self._on_chat_selected)
         self.chat_list_widget.refresh_requested.connect(self.refresh_chats)
         chat_splitter.addWidget(self.chat_list_widget)
@@ -275,8 +347,22 @@ class MainWindow(QMainWindow):
         self.file_explorer_widget.preview_panel.download_requested.connect(self._on_download_file)
         self.view_stack.addWidget(self.file_explorer_widget)
 
-        page_layout.addWidget(self.view_stack)
+        body_layout.addWidget(self.view_stack)
+        root_h_layout.addWidget(body_widget)
         return page
+
+    def _on_rail_nav(self, index: int):
+        """Handle activity rail navigation clicks."""
+        if index == 0:
+            self._switch_main_view(0)
+        elif index == 1:
+            self._switch_main_view(1)
+        elif index == 2:
+            self.open_indexing_manager()
+        elif index == 3:
+            self.open_download_manager()
+        elif index == 4:
+            self._on_find_files()
 
     def open_indexing_manager(self, preselected_chat_id: Optional[int] = None):
         """Open the media indexing management dialog."""
@@ -351,18 +437,24 @@ class MainWindow(QMainWindow):
     def _switch_main_view(self, index: int):
         """Switch between Chats Discovery (0) and File Explorer (1)."""
         self.view_stack.setCurrentIndex(index)
+        if hasattr(self, "activity_rail"):
+            self.activity_rail.set_current_index(index)
+
         if index == 0:
             self.btn_nav_chats.setObjectName("primaryButton")
             self.btn_nav_files.setObjectName("")
+            if hasattr(self, "breadcrumb_label"):
+                self.breadcrumb_label.setText("<b>All Chats</b>  ›  <b>Chats Discovery</b> ▾")
         else:
             self.btn_nav_chats.setObjectName("")
             self.btn_nav_files.setObjectName("primaryButton")
+            if hasattr(self, "breadcrumb_label"):
+                self.breadcrumb_label.setText("<b>All Files</b>  ›  <b>File Explorer</b> ▾")
             self.file_explorer_widget.reload_files()
         self.btn_nav_chats.style().unpolish(self.btn_nav_chats)
         self.btn_nav_chats.style().polish(self.btn_nav_chats)
         self.btn_nav_files.style().unpolish(self.btn_nav_files)
         self.btn_nav_files.style().polish(self.btn_nav_files)
-
 
     def _init_status_bar(self):
         """Set up bottom status bar with permanent status indicators."""
@@ -371,7 +463,7 @@ class MainWindow(QMainWindow):
 
         self.status_files_indicator = QLabel("📁 0 files")
         self.status_files_indicator.setStyleSheet(
-            "color: #949ba4; font-size: 11px; padding: 0 10px; font-weight: 500;"
+            "color: #94a3b8; font-size: 11px; padding: 0 10px; font-weight: 500;"
         )
         self.status_bar.addPermanentWidget(self.status_files_indicator)
 
@@ -419,6 +511,9 @@ class MainWindow(QMainWindow):
             name = f"{user['first_name']} {user['last_name']}".strip()
             username = f"@{user['username']}" if user['username'] else "No username"
 
+            if hasattr(self, "activity_rail"):
+                self.activity_rail.set_user_info(name, True)
+
             self.action_login.setEnabled(False)
             self.action_logout.setEnabled(True)
             self.action_refresh_chats.setEnabled(True)
@@ -432,6 +527,9 @@ class MainWindow(QMainWindow):
             self.status_bar.showMessage(f"Connected to Telegram as {name} ({username})")
 
         else:
+            if hasattr(self, "activity_rail"):
+                self.activity_rail.set_user_info("Guest", False)
+
             self.central_stack.setCurrentIndex(0)
             self.action_login.setEnabled(True)
             self.action_logout.setEnabled(False)
@@ -479,6 +577,8 @@ class MainWindow(QMainWindow):
     def _on_chat_selected(self, chat: TelegramChat):
         """Handle chat navigation."""
         self.chat_detail_widget.set_chat(chat)
+        if hasattr(self, "breadcrumb_label"):
+            self.breadcrumb_label.setText(f"<b>All Chats</b>  ›  <b>{chat.display_name}</b>  ›  Media ▾")
         self.status_bar.showMessage(f"Viewing chat: {chat.display_name} (ID: {chat.id})")
 
     def open_login_dialog(self):

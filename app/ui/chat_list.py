@@ -22,12 +22,12 @@ from ..core.logger import get_logger
 logger = get_logger("ui.chat_list")
 
 TYPE_COLORS = {
-    ChatType.CHANNEL: "#5865f2",      # Discord blurple
-    ChatType.SUPERGROUP: "#3ba55d",   # Green
-    ChatType.GROUP: "#57f287",        # Light green
-    ChatType.USER: "#4f545c",         # Subtle grey
-    ChatType.BOT: "#eb459e",          # Pink
-    ChatType.SAVED_MESSAGES: "#fee75c" # Gold
+    ChatType.CHANNEL: "#2f66ee",       # Vibrant Blue
+    ChatType.SUPERGROUP: "#38bdf8",    # Sky Blue
+    ChatType.GROUP: "#10b981",         # Emerald Green
+    ChatType.USER: "#64748b",          # Slate
+    ChatType.BOT: "#ec4899",           # Pink
+    ChatType.SAVED_MESSAGES: "#f59e0b" # Amber
 }
 
 
@@ -37,59 +37,58 @@ class ChatListItemWidget(QWidget):
     def __init__(self, chat: TelegramChat, parent=None):
         super().__init__(parent)
         self.chat = chat
-        self.setFixedHeight(64)
+        self.setFixedHeight(56)
         self._init_ui()
 
     def _init_ui(self):
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(10, 6, 10, 6)
-        layout.setSpacing(12)
+        layout.setContentsMargins(8, 4, 8, 4)
+        layout.setSpacing(10)
 
         # Avatar Label
         self.avatar_label = QLabel()
-        self.avatar_label.setFixedSize(46, 46)
+        self.avatar_label.setFixedSize(38, 38)
         self.avatar_label.setPixmap(self._generate_avatar())
         layout.addWidget(self.avatar_label)
 
-        # Text Details (Title, Type badge, Chat ID)
+        # Text Details (Title, Type badge, Subtitle info)
         text_layout = QVBoxLayout()
-        text_layout.setSpacing(3)
+        text_layout.setSpacing(2)
         text_layout.setAlignment(Qt.AlignVCenter)
 
-        # Top row: Title + Type Badge
+        # Top row: Title + Type Badge / Lock icon
         top_row = QHBoxLayout()
         top_row.setSpacing(6)
 
-        title_label = QLabel(self.chat.display_name)
+        prefix = "🔒 " if self.chat.chat_type == ChatType.USER else ""
+        title_label = QLabel(f"{prefix}{self.chat.display_name}")
         title_font = QFont()
         title_font.setBold(True)
-        title_font.setPointSize(11)
+        title_font.setPointSize(10)
         title_label.setFont(title_font)
-        title_label.setStyleSheet("color: #ffffff;")
+        title_label.setStyleSheet("color: #f1f5f9;")
         top_row.addWidget(title_label)
 
-        badge_color = TYPE_COLORS.get(self.chat.chat_type, "#5865f2")
+        badge_color = TYPE_COLORS.get(self.chat.chat_type, "#2f66ee")
         type_badge = QLabel(f" {self.chat.chat_type.value} ")
         type_badge.setStyleSheet(
-            f"background-color: {badge_color}; color: #ffffff; border-radius: 4px; font-size: 10px; font-weight: bold; padding: 1px 4px;"
+            f"background-color: {badge_color}; color: #ffffff; border-radius: 4px; font-size: 9px; font-weight: bold; padding: 1px 4px;"
         )
         top_row.addWidget(type_badge)
         top_row.addStretch()
 
         text_layout.addLayout(top_row)
 
-        # Bottom row: Chat ID + Username
+        # Bottom row: Subtitle tag e.g. • Channel 12.4k or @username
         bottom_row = QHBoxLayout()
-        bottom_row.setSpacing(8)
+        bottom_row.setSpacing(6)
 
-        id_label = QLabel(f"ID: {self.chat.id}")
-        id_label.setStyleSheet("color: #949ba4; font-size: 11px;")
-        bottom_row.addWidget(id_label)
-
+        info_text = f"• ID: {self.chat.id}"
         if self.chat.username:
-            user_label = QLabel(f"@{self.chat.username}")
-            user_label.setStyleSheet("color: #00aff4; font-size: 11px;")
-            bottom_row.addWidget(user_label)
+            info_text = f"• @{self.chat.username}"
+        id_label = QLabel(info_text)
+        id_label.setStyleSheet("color: #64748b; font-size: 11px;")
+        bottom_row.addWidget(id_label)
 
         bottom_row.addStretch()
         text_layout.addLayout(bottom_row)
@@ -100,14 +99,14 @@ class ChatListItemWidget(QWidget):
         if self.chat.unread_count > 0:
             unread_badge = QLabel(f"{self.chat.unread_count}")
             unread_badge.setStyleSheet(
-                "background-color: #5865f2; color: #ffffff; border-radius: 10px; font-size: 11px; font-weight: bold; min-width: 20px; padding: 2px 6px;"
+                "background-color: #2f66ee; color: #ffffff; border-radius: 9px; font-size: 10px; font-weight: bold; min-width: 18px; padding: 1px 5px;"
             )
             unread_badge.setAlignment(Qt.AlignCenter)
             layout.addWidget(unread_badge)
 
     def _generate_avatar(self) -> QPixmap:
         """Create circular avatar with image or colored initials."""
-        size = 46
+        size = 38
         target_pixmap = QPixmap(size, size)
         target_pixmap.fill(Qt.transparent)
 
@@ -128,7 +127,7 @@ class ChatListItemWidget(QWidget):
 
         # Fallback: colored circle with initial letter
         color_seed = abs(self.chat.id) % 6
-        palette = ["#5865f2", "#3ba55d", "#fee75c", "#eb459e", "#ed4245", "#00aff4"]
+        palette = ["#2f66ee", "#10b981", "#f59e0b", "#ec4899", "#ef4444", "#38bdf8"]
         bg_color = QColor(palette[color_seed])
 
         painter.setBrush(QBrush(bg_color))
@@ -139,7 +138,7 @@ class ChatListItemWidget(QWidget):
         initial = (self.chat.display_name or "?")[0].upper()
         painter.setPen(QColor("#ffffff"))
         font = QFont()
-        font.setPointSize(16)
+        font.setPointSize(13)
         font.setBold(True)
         painter.setFont(font)
         painter.drawText(QRectF(0, 0, size, size), Qt.AlignCenter, initial)
@@ -161,32 +160,65 @@ class ChatListWidget(QWidget):
         self._init_ui()
 
     def _init_ui(self):
+        self.setStyleSheet("background-color: #1a1c29; border: none;")
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(10)
 
-        # Header Bar: Title + Refresh
+        # Header Bar: Title "Telegram Explorer ▾" + Refresh
         header_layout = QHBoxLayout()
-        header_title = QLabel("Chats & Channels")
+        header_title = QLabel("Platform ▾")
         header_font = QFont()
-        header_font.setPointSize(14)
+        header_font.setPointSize(13)
         header_font.setBold(True)
         header_title.setFont(header_font)
+        header_title.setStyleSheet("color: #ffffff;")
         header_layout.addWidget(header_title)
 
-        self.btn_refresh = QPushButton("🔄 Refresh")
-        self.btn_refresh.setStyleSheet("padding: 4px 10px; font-size: 11px;")
+        header_layout.addStretch()
+
+        self.btn_refresh = QPushButton("🔄")
+        self.btn_refresh.setFixedSize(28, 28)
+        self.btn_refresh.setToolTip("Refresh discovered chats")
+        self.btn_refresh.setStyleSheet(
+            """
+            QPushButton {
+                background-color: #24273b;
+                color: #94a3b8;
+                border: 1px solid #2e3248;
+                border-radius: 6px;
+                padding: 0;
+            }
+            QPushButton:hover {
+                background-color: #2f334d;
+                color: #ffffff;
+            }
+            """
+        )
         self.btn_refresh.clicked.connect(self.refresh_requested.emit)
         header_layout.addWidget(self.btn_refresh)
         layout.addLayout(header_layout)
 
         # Search Box
         self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("🔍 Search chats by name or ID...")
+        self.search_input.setObjectName("darkSearchInput")
+        self.search_input.setPlaceholderText("🔍 Search chats & channels...")
         self.search_input.textChanged.connect(self._apply_filter)
         layout.addWidget(self.search_input)
 
-        # Category Filter Buttons
+        # Section Header: CHATS / SOURCES ▾
+        section_layout = QHBoxLayout()
+        section_label = QLabel("📁 CHATS ▾")
+        section_label.setStyleSheet("color: #94a3b8; font-size: 11px; font-weight: bold;")
+        section_layout.addWidget(section_label)
+        section_layout.addStretch()
+
+        self.count_label = QLabel("0 chats")
+        self.count_label.setStyleSheet("color: #64748b; font-size: 11px;")
+        section_layout.addWidget(self.count_label)
+        layout.addLayout(section_layout)
+
+        # Category Filter Pills
         filter_layout = QHBoxLayout()
         filter_layout.setSpacing(4)
 
@@ -201,36 +233,47 @@ class ChatListWidget(QWidget):
             (self.btn_filter_groups, "GROUP"),
             (self.btn_filter_users, "USER"),
         ]:
-            btn.setStyleSheet("padding: 4px 8px; font-size: 11px;")
+            btn.setStyleSheet(
+                """
+                QPushButton {
+                    background-color: #24273b;
+                    color: #94a3b8;
+                    border: 1px solid #2e3248;
+                    border-radius: 12px;
+                    padding: 3px 8px;
+                    font-size: 10px;
+                    font-weight: 600;
+                }
+                QPushButton:hover {
+                    background-color: #2f334d;
+                    color: #ffffff;
+                }
+                """
+            )
             btn.clicked.connect(lambda checked=False, c=cat: self._set_category_filter(c))
             filter_layout.addWidget(btn)
 
         layout.addLayout(filter_layout)
-
-        # Chat Count Info
-        self.count_label = QLabel("0 chats discovered")
-        self.count_label.setStyleSheet("color: #949ba4; font-size: 11px;")
-        layout.addWidget(self.count_label)
 
         # List Widget
         self.list_widget = QListWidget()
         self.list_widget.setStyleSheet(
             """
             QListWidget {
-                background-color: #1e1f22;
-                border: 1px solid #2b2d31;
-                border-radius: 8px;
+                background-color: transparent;
+                border: none;
+                outline: none;
             }
             QListWidget::item {
-                border-bottom: 1px solid #2b2d31;
-                border-radius: 6px;
-                margin: 2px 4px;
+                border-radius: 8px;
+                margin: 2px 0px;
             }
             QListWidget::item:selected {
-                background-color: #35373c;
+                background-color: #282b3e;
+                border: 1px solid #373a4f;
             }
             QListWidget::item:hover:!selected {
-                background-color: #232428;
+                background-color: #202334;
             }
             """
         )
@@ -277,14 +320,14 @@ class ChatListWidget(QWidget):
 
             # Add to list widget
             item = QListWidgetItem(self.list_widget)
-            item.setSizeHint(QSize(0, 64))
+            item.setSizeHint(QSize(0, 56))
             item.setData(Qt.UserRole, chat)
 
             widget = ChatListItemWidget(chat)
             self.list_widget.setItemWidget(item, widget)
             matched += 1
 
-        self.count_label.setText(f"{matched} of {len(self._all_chats)} chats")
+        self.count_label.setText(f"{matched} chats")
 
     def _on_item_clicked(self, item: QListWidgetItem):
         """Handle chat selection in the list."""
@@ -292,3 +335,4 @@ class ChatListWidget(QWidget):
         if chat:
             logger.info("Selected chat: %s (ID: %d)", chat.display_name, chat.id)
             self.chat_selected.emit(chat)
+

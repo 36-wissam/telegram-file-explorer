@@ -47,8 +47,8 @@ class PreviewPanel(QWidget):
         self.frame.setStyleSheet(
             """
             QFrame {
-                background-color: #18191c;
-                border: 1px solid #2b2d31;
+                background-color: #f8fafc;
+                border: 1px solid #e2e8f0;
                 border-radius: 8px;
                 padding: 12px;
             }
@@ -60,15 +60,15 @@ class PreviewPanel(QWidget):
 
         # Thumbnail Preview Container
         self.thumb_label = QLabel()
-        self.thumb_label.setFixedSize(240, 160)
+        self.thumb_label.setFixedSize(240, 150)
         self.thumb_label.setAlignment(Qt.AlignCenter)
         self.thumb_label.setStyleSheet(
             """
-            background-color: #232428;
-            border: 1px solid #2b2d31;
+            background-color: #ffffff;
+            border: 1px solid #e2e8f0;
             border-radius: 6px;
-            color: #949ba4;
-            font-size: 13px;
+            color: #94a3b8;
+            font-size: 12px;
             """
         )
         self.thumb_label.setText("No File Selected")
@@ -77,9 +77,10 @@ class PreviewPanel(QWidget):
         # File Name
         self.name_label = QLabel("Select a file to inspect")
         name_font = QFont()
-        name_font.setPointSize(12)
+        name_font.setPointSize(11)
         name_font.setBold(True)
         self.name_label.setFont(name_font)
+        self.name_label.setStyleSheet("color: #0f172a;")
         self.name_label.setWordWrap(True)
         self.name_label.setAlignment(Qt.AlignCenter)
         f_layout.addWidget(self.name_label)
@@ -94,9 +95,13 @@ class PreviewPanel(QWidget):
         self.details_box.setStyleSheet(
             """
             QFrame {
-                background-color: #1e1f22;
+                background-color: #ffffff;
+                border: 1px solid #e2e8f0;
                 border-radius: 6px;
                 padding: 10px;
+            }
+            QLabel {
+                color: #334155;
             }
             """
         )
@@ -120,7 +125,7 @@ class PreviewPanel(QWidget):
         d_layout.addWidget(self.mime_label)
 
         self.caption_label = QLabel("")
-        self.caption_label.setStyleSheet("font-size: 11px; color: #949ba4;")
+        self.caption_label.setStyleSheet("font-size: 11px; color: #64748b;")
         self.caption_label.setWordWrap(True)
         d_layout.addWidget(self.caption_label)
 

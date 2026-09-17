@@ -70,26 +70,55 @@ class AdvancedFilterBar(QWidget):
 
     def _init_ui(self):
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(12, 8, 12, 8)
-        main_layout.setSpacing(8)
+        main_layout.setContentsMargins(12, 6, 12, 6)
+        main_layout.setSpacing(6)
 
         self.container = QFrame(self)
         self.container.setStyleSheet(
             """
             QFrame {
-                background-color: #1e1f22;
-                border: 1px solid #2b2d31;
+                background-color: #f8fafc;
+                border: 1px solid #e2e8f0;
+                border-radius: 8px;
+                padding: 10px 14px;
+            }
+            QLabel {
+                color: #475569;
+                font-size: 11px;
+                font-weight: 600;
+            }
+            QComboBox {
+                background-color: #ffffff;
+                color: #0f172a;
+                border: 1px solid #cbd5e1;
                 border-radius: 6px;
-                padding: 10px;
+                padding: 4px 8px;
+                font-size: 12px;
+                min-height: 22px;
+            }
+            QComboBox:hover {
+                border-color: #94a3b8;
+            }
+            QLineEdit {
+                background-color: #ffffff;
+                color: #0f172a;
+                border: 1px solid #cbd5e1;
+                border-radius: 6px;
+                padding: 4px 8px;
+                font-size: 12px;
+                min-height: 22px;
+            }
+            QLineEdit:focus {
+                border-color: #2f66ee;
             }
             """
         )
         grid = QGridLayout(self.container)
         grid.setHorizontalSpacing(16)
-        grid.setVerticalSpacing(10)
+        grid.setVerticalSpacing(8)
 
         # 1. Size Preset Filter
-        grid.addWidget(QLabel("<b>File Size:</b>"), 0, 0)
+        grid.addWidget(QLabel("FILE SIZE"), 0, 0)
         self.combo_size = QComboBox()
         for label, _, _ in SIZE_PRESETS:
             self.combo_size.addItem(label)
@@ -97,7 +126,7 @@ class AdvancedFilterBar(QWidget):
         grid.addWidget(self.combo_size, 0, 1)
 
         # 2. Date Range Filter
-        grid.addWidget(QLabel("<b>Date Range:</b>"), 0, 2)
+        grid.addWidget(QLabel("DATE RANGE"), 0, 2)
         self.combo_date = QComboBox()
         for label, _ in DATE_PRESETS:
             self.combo_date.addItem(label)
@@ -105,14 +134,14 @@ class AdvancedFilterBar(QWidget):
         grid.addWidget(self.combo_date, 0, 3)
 
         # 3. Extension Filter
-        grid.addWidget(QLabel("<b>Extension:</b>"), 1, 0)
+        grid.addWidget(QLabel("EXTENSION"), 1, 0)
         self.input_ext = QLineEdit()
         self.input_ext.setPlaceholderText("e.g. .pdf, .zip, .mp4")
         self.input_ext.textChanged.connect(self._on_filter_changed)
         grid.addWidget(self.input_ext, 1, 1)
 
         # 4. Source Chat Filter
-        grid.addWidget(QLabel("<b>Source Chat:</b>"), 1, 2)
+        grid.addWidget(QLabel("SOURCE CHAT"), 1, 2)
         self.combo_chat = QComboBox()
         self.combo_chat.addItem("All Chats", None)
         self.combo_chat.currentIndexChanged.connect(self._on_filter_changed)
@@ -125,7 +154,8 @@ class AdvancedFilterBar(QWidget):
         self.combo_sort_field = QComboBox()
         self.combo_sort_field.addItems(["Date", "Name", "Size"])
         self.combo_sort_field.currentIndexChanged.connect(self._on_filter_changed)
-        btn_layout.addWidget(QLabel("<b>Sort:</b>"))
+        lbl_sort = QLabel("SORT BY")
+        btn_layout.addWidget(lbl_sort)
         btn_layout.addWidget(self.combo_sort_field)
 
         self.combo_sort_dir = QComboBox()
@@ -136,7 +166,24 @@ class AdvancedFilterBar(QWidget):
         btn_layout.addStretch()
 
         self.btn_reset = QPushButton("Reset All Filters")
-        self.btn_reset.setStyleSheet("padding: 4px 12px; font-size: 11px;")
+        self.btn_reset.setStyleSheet(
+            """
+            QPushButton {
+                background-color: #ffffff;
+                color: #64748b;
+                border: 1px solid #cbd5e1;
+                border-radius: 6px;
+                padding: 4px 12px;
+                font-size: 11px;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: #f1f5f9;
+                color: #0f172a;
+                border-color: #94a3b8;
+            }
+            """
+        )
         self.btn_reset.clicked.connect(self.reset_filters)
         btn_layout.addWidget(self.btn_reset)
 

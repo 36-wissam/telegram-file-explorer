@@ -84,7 +84,7 @@ class FileExplorerWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        # Top Navigation & Search Toolbar
+        # Top Navigation & Search Toolbar (Light SaaS Strip)
         toolbar = self._create_toolbar()
         layout.addWidget(toolbar)
 
@@ -94,12 +94,12 @@ class FileExplorerWidget(QWidget):
         self.filter_bar.filters_changed.connect(self._on_advanced_filters_changed)
         layout.addWidget(self.filter_bar)
 
-        # Splitter: Sidebar (Categories & Chats) + Central Table View
+        # Splitter: Left Sidebar (Categories) + Center File Canvas
         splitter = QSplitter(Qt.Horizontal)
         splitter.setStyleSheet(
             """
             QSplitter::handle {
-                background-color: #2b2d31;
+                background-color: #1e202e;
                 width: 1px;
             }
             """
@@ -109,7 +109,7 @@ class FileExplorerWidget(QWidget):
         self.sidebar = self._create_sidebar()
         splitter.addWidget(self.sidebar)
 
-        # Center Content: File Table + Pagination Bar
+        # Center Content: File Table + Bottom Dropzone + Pagination Bar
         content_pane = self._create_content_pane()
         splitter.addWidget(content_pane)
 
@@ -122,29 +122,60 @@ class FileExplorerWidget(QWidget):
         toolbar.setStyleSheet(
             """
             QFrame {
-                background-color: #1e1f22;
-                border-bottom: 1px solid #2b2d31;
-                padding: 6px 12px;
+                background-color: #ffffff;
+                border-bottom: 1px solid #e2e8f0;
+                padding: 4px 8px;
             }
             """
         )
         t_layout = QHBoxLayout(toolbar)
-        t_layout.setContentsMargins(8, 4, 8, 4)
-        t_layout.setSpacing(12)
+        t_layout.setContentsMargins(12, 6, 12, 6)
+        t_layout.setSpacing(10)
+
+        # Pill Button 1: Download Selected / Add Folder (Dark pill button)
+        self.btn_download_pill = QPushButton("+ Download")
+        self.btn_download_pill.setObjectName("darkPillButton")
+        self.btn_download_pill.setToolTip("Download selected files")
+        self.btn_download_pill.clicked.connect(self._on_download_selected_clicked)
+        t_layout.addWidget(self.btn_download_pill)
+
+        # Pill Button 2: Status: All (Pill dropdown)
+        self.btn_status_pill = QPushButton("Status: All ▾")
+        self.btn_status_pill.setObjectName("filterPillButton")
+        self.btn_status_pill.clicked.connect(self._toggle_filter_bar)
+        t_layout.addWidget(self.btn_status_pill)
+
+        # Pill Button 3: Date Range Filter Pill
+        self.btn_date_pill = QPushButton("📅 All Dates ✖")
+        self.btn_date_pill.setObjectName("filterPillButton")
+        self.btn_date_pill.clicked.connect(self._toggle_filter_bar)
+        t_layout.addWidget(self.btn_date_pill)
+
+        # Pill Button 4: Filters Toggle Button
+        self.btn_toggle_filters = QPushButton("🔽 Filters")
+        self.btn_toggle_filters.setObjectName("filterPillButton")
+        self.btn_toggle_filters.setCheckable(True)
+        self.btn_toggle_filters.clicked.connect(self._toggle_filter_bar)
+        t_layout.addWidget(self.btn_toggle_filters)
 
         # Search Bar
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("🔍 Search files by name, caption, chat...")
         self.search_input.setClearButtonEnabled(True)
-        self.search_input.setFixedWidth(340)
+        self.search_input.setFixedWidth(280)
         self.search_input.textChanged.connect(self._on_search_changed)
         t_layout.addWidget(self.search_input)
 
         t_layout.addStretch()
 
+        # Summary Info: "132 items, 6.5 GB"
+        self.items_summary_label = QLabel("0 items")
+        self.items_summary_label.setStyleSheet("color: #64748b; font-size: 12px; font-weight: 500;")
+        t_layout.addWidget(self.items_summary_label)
+
         # Sort Dropdown
-        sort_label = QLabel("Sort by:")
-        sort_label.setStyleSheet("color: #949ba4; font-size: 12px;")
+        sort_label = QLabel("Sort:")
+        sort_label.setStyleSheet("color: #94a3b8; font-size: 12px;")
         t_layout.addWidget(sort_label)
 
         self.sort_combo = QComboBox()
@@ -159,14 +190,24 @@ class FileExplorerWidget(QWidget):
         self.sort_combo.currentIndexChanged.connect(self._on_sort_changed)
         t_layout.addWidget(self.sort_combo)
 
-        # Advanced Filters Toggle Button
-        self.btn_toggle_filters = QPushButton("🔽 Filters")
-        self.btn_toggle_filters.setCheckable(True)
-        self.btn_toggle_filters.clicked.connect(self._toggle_filter_bar)
-        t_layout.addWidget(self.btn_toggle_filters)
-
         # Refresh Button
-        self.btn_refresh = QPushButton("🔄 Refresh")
+        self.btn_refresh = QPushButton("🔄")
+        self.btn_refresh.setFixedSize(30, 30)
+        self.btn_refresh.setToolTip("Refresh file list")
+        self.btn_refresh.setStyleSheet(
+            """
+            QPushButton {
+                background-color: #f1f5f9;
+                color: #64748b;
+                border: 1px solid #cbd5e1;
+                border-radius: 6px;
+            }
+            QPushButton:hover {
+                background-color: #e2e8f0;
+                color: #0f172a;
+            }
+            """
+        )
         self.btn_refresh.clicked.connect(self.reload_files)
         t_layout.addWidget(self.btn_refresh)
 
@@ -174,13 +215,13 @@ class FileExplorerWidget(QWidget):
 
     def _create_sidebar(self) -> QWidget:
         sidebar = QFrame(self)
-        sidebar.setMinimumWidth(220)
-        sidebar.setMaximumWidth(280)
+        sidebar.setMinimumWidth(200)
+        sidebar.setMaximumWidth(260)
         sidebar.setStyleSheet(
             """
             QFrame {
-                background-color: #18191c;
-                border-right: 1px solid #2b2d31;
+                background-color: #1a1c29;
+                border-right: 1px solid #1e202e;
             }
             """
         )
@@ -188,8 +229,13 @@ class FileExplorerWidget(QWidget):
         s_layout.setContentsMargins(10, 12, 10, 12)
         s_layout.setSpacing(8)
 
-        section_title = QLabel("CATEGORIES")
-        section_title.setStyleSheet("color: #949ba4; font-size: 11px; font-weight: bold; padding-left: 4px;")
+        # Overview link
+        overview_label = QLabel("Overview")
+        overview_label.setStyleSheet("color: #94a3b8; font-size: 12px; font-weight: 500; padding: 4px 8px;")
+        s_layout.addWidget(overview_label)
+
+        section_title = QLabel("📂 CATEGORIES ▾")
+        section_title.setStyleSheet("color: #94a3b8; font-size: 11px; font-weight: bold; padding: 4px 8px;")
         s_layout.addWidget(section_title)
 
         self.category_tree = QTreeWidget()
@@ -199,19 +245,23 @@ class FileExplorerWidget(QWidget):
             QTreeWidget {
                 background-color: transparent;
                 border: none;
-                font-size: 13px;
+                font-size: 12px;
+                color: #cbd5e1;
             }
             QTreeWidget::item {
-                padding: 6px 8px;
+                padding: 6px 10px;
                 border-radius: 6px;
                 margin-bottom: 2px;
             }
             QTreeWidget::item:selected {
-                background-color: #35373c;
+                background-color: #282b3e;
                 color: #ffffff;
+                font-weight: bold;
+                border: 1px solid #373a4f;
             }
             QTreeWidget::item:hover:!selected {
-                background-color: #232428;
+                background-color: #202334;
+                color: #ffffff;
             }
             """
         )
@@ -241,23 +291,25 @@ class FileExplorerWidget(QWidget):
 
     def _create_content_pane(self) -> QWidget:
         pane = QWidget(self)
+        pane.setStyleSheet("background-color: #ffffff;")
         layout = QVBoxLayout(pane)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
         inner_splitter = QSplitter(Qt.Horizontal)
-        inner_splitter.setStyleSheet("QSplitter::handle { background-color: #2b2d31; width: 1px; }")
+        inner_splitter.setStyleSheet("QSplitter::handle { background-color: #e2e8f0; width: 1px; }")
 
-        # Center Column: Table + Pagination Footer
+        # Center Column: Table + Bottom Dropzone + Pagination Footer
         table_container = QWidget()
+        table_container.setStyleSheet("background-color: #ffffff;")
         tc_layout = QVBoxLayout(table_container)
-        tc_layout.setContentsMargins(0, 0, 0, 0)
-        tc_layout.setSpacing(0)
+        tc_layout.setContentsMargins(12, 8, 12, 8)
+        tc_layout.setSpacing(8)
 
-        # File List Table
+        # File List Table (Light Modern Canvas)
         self.table = QTableWidget()
         self.table.setColumnCount(5)
-        self.table.setHorizontalHeaderLabels(["Name", "Source Chat", "Type", "Size", "Date"])
+        self.table.setHorizontalHeaderLabels(["NAME", "SOURCE CHAT", "TYPE", "SIZE", "DATE"])
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
@@ -270,25 +322,33 @@ class FileExplorerWidget(QWidget):
         self.table.setStyleSheet(
             """
             QTableWidget {
-                background-color: #1e1f22;
-                alternate-background-color: #232428;
-                border: none;
+                background-color: #ffffff;
+                alternate-background-color: #f8fafc;
+                border: 1px solid #f1f5f9;
+                border-radius: 8px;
                 gridline-color: transparent;
-                selection-background-color: #35373c;
+                selection-background-color: #eff6ff;
                 font-size: 13px;
+                outline: none;
             }
             QTableWidget::item {
-                padding: 6px 10px;
-                border: none;
+                padding: 8px 12px;
+                border-bottom: 1px solid #f1f5f9;
+                color: #0f172a;
+            }
+            QTableWidget::item:selected {
+                background-color: #eff6ff;
+                color: #2f66ee;
             }
             QHeaderView::section {
-                background-color: #18191c;
-                color: #949ba4;
+                background-color: #ffffff;
+                color: #94a3b8;
                 border: none;
-                border-bottom: 1px solid #2b2d31;
-                padding: 6px 10px;
-                font-weight: bold;
+                border-bottom: 1px solid #e2e8f0;
+                padding: 8px 12px;
+                font-weight: 700;
                 font-size: 11px;
+                letter-spacing: 0.5px;
             }
             """
         )
@@ -297,7 +357,7 @@ class FileExplorerWidget(QWidget):
 
         # Empty State Card View
         self.empty_files_card = QFrame()
-        self.empty_files_card.setStyleSheet("background-color: #1e1f22; border: none;")
+        self.empty_files_card.setStyleSheet("background-color: #ffffff; border: none;")
         empty_layout = QVBoxLayout(self.empty_files_card)
         empty_layout.setAlignment(Qt.AlignCenter)
         empty_layout.setSpacing(14)
@@ -308,12 +368,12 @@ class FileExplorerWidget(QWidget):
         empty_layout.addWidget(self.empty_icon)
 
         self.empty_title = QLabel("No Files Found")
-        self.empty_title.setStyleSheet("font-size: 18px; font-weight: bold; color: #dbdee1; background: transparent;")
+        self.empty_title.setStyleSheet("font-size: 18px; font-weight: bold; color: #0f172a; background: transparent;")
         self.empty_title.setAlignment(Qt.AlignCenter)
         empty_layout.addWidget(self.empty_title)
 
         self.empty_desc = QLabel("No files match your current search and filter criteria.")
-        self.empty_desc.setStyleSheet("font-size: 13px; color: #949ba4; max-width: 420px; background: transparent;")
+        self.empty_desc.setStyleSheet("font-size: 13px; color: #64748b; max-width: 420px; background: transparent;")
         self.empty_desc.setAlignment(Qt.AlignCenter)
         self.empty_desc.setWordWrap(True)
         empty_layout.addWidget(self.empty_desc)
@@ -322,7 +382,7 @@ class FileExplorerWidget(QWidget):
         self.btn_clear_filters.setStyleSheet(
             """
             QPushButton {
-                background-color: #5865f2;
+                background-color: #2f66ee;
                 color: #ffffff;
                 border: none;
                 border-radius: 6px;
@@ -331,7 +391,7 @@ class FileExplorerWidget(QWidget):
                 font-size: 13px;
             }
             QPushButton:hover {
-                background-color: #4752c4;
+                background-color: #2554c7;
             }
             """
         )
@@ -344,36 +404,62 @@ class FileExplorerWidget(QWidget):
         self.content_stack.addWidget(self.empty_files_card)
         tc_layout.addWidget(self.content_stack)
 
+        # Bottom Drag & Drop / Import Card Strip
+        self.drop_zone = QFrame()
+        self.drop_zone.setFixedHeight(48)
+        self.drop_zone.setStyleSheet(
+            """
+            QFrame {
+                border: 2px dashed #cbd5e1;
+                border-radius: 8px;
+                background-color: #f8fafc;
+            }
+            QFrame:hover {
+                border-color: #2f66ee;
+                background-color: #eff6ff;
+            }
+            """
+        )
+        dz_layout = QHBoxLayout(self.drop_zone)
+        dz_layout.setAlignment(Qt.AlignCenter)
+        dz_layout.setContentsMargins(8, 4, 8, 4)
+        dz_label = QLabel("☁  Drop, select or import files")
+        dz_label.setStyleSheet("color: #64748b; font-size: 12px; font-weight: 500;")
+        dz_layout.addWidget(dz_label)
+        tc_layout.addWidget(self.drop_zone)
+
         # Pagination & Summary Footer
         footer = QFrame()
         footer.setStyleSheet(
             """
             QFrame {
-                background-color: #18191c;
-                border-top: 1px solid #2b2d31;
-                padding: 4px 12px;
+                background-color: #ffffff;
+                border-top: 1px solid #f1f5f9;
+                padding: 2px 8px;
             }
             """
         )
         f_layout = QHBoxLayout(footer)
-        f_layout.setContentsMargins(8, 6, 8, 6)
+        f_layout.setContentsMargins(8, 4, 8, 4)
 
         self.summary_label = QLabel("0 files indexed")
-        self.summary_label.setStyleSheet("color: #949ba4; font-size: 12px;")
+        self.summary_label.setStyleSheet("color: #64748b; font-size: 12px; font-weight: 500;")
         f_layout.addWidget(self.summary_label)
 
         f_layout.addStretch()
 
         # Pagination Controls
         self.btn_prev_page = QPushButton("◀ Previous")
+        self.btn_prev_page.setStyleSheet("padding: 4px 12px; font-size: 11px;")
         self.btn_prev_page.clicked.connect(self._prev_page)
         f_layout.addWidget(self.btn_prev_page)
 
         self.page_label = QLabel("Page 1 of 1")
-        self.page_label.setStyleSheet("color: #dbdee1; font-size: 12px; padding: 0 8px;")
+        self.page_label.setStyleSheet("color: #334155; font-size: 12px; font-weight: 600; padding: 0 8px;")
         f_layout.addWidget(self.page_label)
 
         self.btn_next_page = QPushButton("Next ▶")
+        self.btn_next_page.setStyleSheet("padding: 4px 12px; font-size: 11px;")
         self.btn_next_page.clicked.connect(self._next_page)
         f_layout.addWidget(self.btn_next_page)
 
@@ -391,10 +477,21 @@ class FileExplorerWidget(QWidget):
         layout.addWidget(inner_splitter)
         return pane
 
+    def _on_download_selected_clicked(self):
+        """Trigger download for currently selected file in table."""
+        selected_rows = self.table.selectedItems()
+        if selected_rows:
+            first_item = self.table.item(selected_rows[0].row(), 0)
+            file_item = first_item.data(Qt.UserRole)
+            if file_item:
+                self.file_double_clicked.emit(file_item)
 
-    def _toggle_filter_bar(self, checked: bool):
+    def _toggle_filter_bar(self, checked: bool = None):
         """Show or hide the advanced filters panel."""
+        if checked is None:
+            checked = not self.filter_bar.isVisible()
         self.filter_bar.setVisible(checked)
+        self.btn_toggle_filters.setChecked(checked)
         self.btn_toggle_filters.setText("🔼 Filters" if checked else "🔽 Filters")
 
     def _on_advanced_filters_changed(self, criteria: AdvancedFilterCriteria):
@@ -448,7 +545,6 @@ class FileExplorerWidget(QWidget):
         self._render_table()
         self._update_pagination()
 
-
     def _render_table(self):
         """Populate table with fetched files with optimized batch rendering."""
         if len(self._cached_files) == 0:
@@ -482,33 +578,45 @@ class FileExplorerWidget(QWidget):
             self.table.setRowCount(0)
             self.table.setRowCount(len(self._cached_files))
 
+            total_bytes = sum(f.file_size for f in self._cached_files)
+            self.items_summary_label.setText(f"{self._total_files} items, {format_bytes(total_bytes)}")
+            if hasattr(self, "btn_status_pill"):
+                self.btn_status_pill.setText(f"Status: All ({self._total_files}) ▾")
+
             for row, file_item in enumerate(self._cached_files):
+                self.table.setRowHeight(row, 48)
+
                 # Filename with category icon
                 icon = CATEGORY_ICONS.get(file_item.media_type, "📎")
                 name_item = QTableWidgetItem(f"{icon}  {file_item.filename}")
                 name_item.setData(Qt.UserRole, file_item)
+                name_font = QFont()
+                name_font.setBold(True)
+                name_item.setFont(name_font)
+                name_item.setForeground(QColor("#0f172a"))
                 self.table.setItem(row, 0, name_item)
 
                 # Chat title
-                chat_item = QTableWidgetItem(file_item.chat_title or "Unknown")
-                chat_item.setForeground(QColor("#949ba4"))
+                chat_item = QTableWidgetItem(f"• {file_item.chat_title or 'Unknown'}")
+                chat_item.setForeground(QColor("#64748b"))
                 self.table.setItem(row, 1, chat_item)
 
                 # Media Type
                 type_item = QTableWidgetItem(file_item.media_type)
-                type_item.setForeground(QColor("#00aff4"))
+                type_item.setForeground(QColor("#2f66ee"))
                 self.table.setItem(row, 2, type_item)
 
                 # Size
                 size_str = format_bytes(file_item.file_size)
                 size_item = QTableWidgetItem(size_str)
                 size_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+                size_item.setForeground(QColor("#0f172a"))
                 self.table.setItem(row, 3, size_item)
 
                 # Date
-                date_str = file_item.message_date.strftime("%Y-%m-%d %H:%M") if file_item.message_date else "-"
+                date_str = file_item.message_date.strftime("%b %d at %I:%M %p") if file_item.message_date else "-"
                 date_item = QTableWidgetItem(date_str)
-                date_item.setForeground(QColor("#949ba4"))
+                date_item.setForeground(QColor("#64748b"))
                 self.table.setItem(row, 4, date_item)
         finally:
             self.table.blockSignals(False)
