@@ -1,8 +1,8 @@
-"""Chat sidebar list widget conforming strictly to the specification (300px width, 64px rows, Lucide SVG icons, zero emojis)."""
+"""Chat sidebar list widget conforming strictly to the Obsidian specification (280px width collapsible to 72px, 64px rows, 40px circular avatars, debounced selection)."""
 
 from typing import List, Optional
 from pathlib import Path
-from PySide6.QtCore import Qt, Signal, QSize, QRectF
+from PySide6.QtCore import Qt, Signal, QSize, QRectF, QTimer
 from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPixmap, QBrush
 from PySide6.QtWidgets import (
     QFrame,
@@ -19,21 +19,22 @@ from PySide6.QtWidgets import (
 from ..telegram.chats import ChatType, TelegramChat
 from ..core.logger import get_logger
 from .icons import get_icon, get_pixmap
+from .theme_manager import theme_manager
 
 logger = get_logger("ui.chat_list")
 
 TYPE_COLORS = {
-    ChatType.CHANNEL: "#229ED9",       # Telegram Blue
-    ChatType.SUPERGROUP: "#3AAFE8",    # Light Blue
-    ChatType.GROUP: "#22C55E",         # Green
-    ChatType.USER: "#71717A",          # Gray
-    ChatType.BOT: "#A855F7",           # Purple
-    ChatType.SAVED_MESSAGES: "#F59E0B" # Amber
+    ChatType.CHANNEL: "#5C8DFF",
+    ChatType.SUPERGROUP: "#7AA2FF",
+    ChatType.GROUP: "#3DDC84",
+    ChatType.USER: "#9BA1AC",
+    ChatType.BOT: "#A855F7",
+    ChatType.SAVED_MESSAGES: "#F5A623",
 }
 
 
 class ChatListItemWidget(QWidget):
-    """Custom widget rendered for each chat in QListWidget (64px row height, 44x44 avatar)."""
+    """Custom widget rendered for each chat in QListWidget (64px row height, 40px circular avatar)."""
 
     def __init__(self, chat: TelegramChat, parent=None):
         super().__init__(parent)
@@ -42,19 +43,20 @@ class ChatListItemWidget(QWidget):
         self._init_ui()
 
     def _init_ui(self):
+        tokens = theme_manager.get_active_tokens()
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(12, 10, 12, 10)
+        layout.setContentsMargins(12, 8, 12, 8)
         layout.setSpacing(12)
 
-        # Avatar Label (44x44)
+        # Avatar Label (40x40 circular)
         self.avatar_label = QLabel()
-        self.avatar_label.setFixedSize(44, 44)
+        self.avatar_label.setFixedSize(40, 40)
         self.avatar_label.setPixmap(self._generate_avatar())
         layout.addWidget(self.avatar_label)
 
         # Text Details (Title, Last message preview, Timestamp)
         text_layout = QVBoxLayout()
-        text_layout.setSpacing(4)
+        text_layout.setSpacing(2)
         text_layout.setAlignment(Qt.AlignVCenter)
 
         # Top row: Title + Timestamp
@@ -62,11 +64,10 @@ class ChatListItemWidget(QWidget):
         top_row.setSpacing(6)
 
         title_label = QLabel(self.chat.display_name)
-        title_font = QFont()
+        title_font = QFont("Inter", 10)
         title_font.setBold(True)
-        title_font.setPointSize(10)
         title_label.setFont(title_font)
-        title_label.setStyleSheet("color: #F4F4F5;")
+        title_label.setStyleSheet(f"color: {tokens['text_primary']};")
         top_row.addWidget(title_label)
 
         top_row.addStretch()
@@ -76,7 +77,7 @@ class ChatListItemWidget(QWidget):
         if self.chat.last_message_date:
             time_str = self.chat.last_message_date.strftime("%H:%M")
         time_label = QLabel(time_str)
-        time_label.setStyleSheet("color: #71717A; font-size: 11px;")
+        time_label.setStyleSheet(f"color: {tokens['text_tertiary']}; font-size: 11px;")
         top_row.addWidget(time_label)
 
         text_layout.addLayout(top_row)
@@ -87,7 +88,7 @@ class ChatListItemWidget(QWidget):
 
         info_text = f"@{self.chat.username}" if self.chat.username else self.chat.chat_type.value
         preview_label = QLabel(info_text)
-        preview_label.setStyleSheet("color: #A1A1AA; font-size: 12px;")
+        preview_label.setStyleSheet(f"color: {tokens['text_secondary']}; font-size: 12px;")
         bottom_row.addWidget(preview_label)
 
         bottom_row.addStretch()
@@ -96,7 +97,7 @@ class ChatListItemWidget(QWidget):
         if self.chat.unread_count > 0:
             unread_badge = QLabel(f"{self.chat.unread_count}")
             unread_badge.setStyleSheet(
-                "background-color: #229ED9; color: #FFFFFF; border-radius: 9px; font-size: 11px; font-weight: 600; min-width: 18px; padding: 1px 6px;"
+                f"background-color: {tokens['accent']}; color: #FFFFFF; border-radius: 9px; font-size: 11px; font-weight: 600; min-width: 18px; padding: 1px 6px;"
             )
             unread_badge.setAlignment(Qt.AlignCenter)
             bottom_row.addWidget(unread_badge)
@@ -105,8 +106,8 @@ class ChatListItemWidget(QWidget):
         layout.addLayout(text_layout)
 
     def _generate_avatar(self) -> QPixmap:
-        """Create circular avatar with image or colored initials (44x44)."""
-        size = 44
+        """Create circular avatar with image or colored initials (40x40)."""
+        size = 40
         target_pixmap = QPixmap(size, size)
         target_pixmap.fill(Qt.transparent)
 
@@ -117,7 +118,6 @@ class ChatListItemWidget(QWidget):
         path.addEllipse(0, 0, size, size)
         painter.setClipPath(path)
 
-        # Try loading cached image if available
         if self.chat.avatar_path and Path(self.chat.avatar_path).exists():
             img_pixmap = QPixmap(self.chat.avatar_path)
             if not img_pixmap.isNull():
@@ -125,20 +125,16 @@ class ChatListItemWidget(QWidget):
                 painter.end()
                 return target_pixmap
 
-        # Fallback: subtle colored circle with clean initial letter
-        color_seed = abs(self.chat.id) % 6
-        palette = ["#229ED9", "#22C55E", "#F59E0B", "#A855F7", "#EF4444", "#3AAFE8"]
-        bg_color = QColor(palette[color_seed])
+        palette = ["#5C8DFF", "#3DDC84", "#F5A623", "#A855F7", "#F1554C", "#7AA2FF"]
+        bg_color = QColor(palette[abs(self.chat.id) % len(palette)])
 
         painter.setBrush(QBrush(bg_color))
         painter.setPen(Qt.NoPen)
         painter.drawRect(0, 0, size, size)
 
-        # Initial letter
         initial = (self.chat.display_name or "?")[0].upper()
         painter.setPen(QColor("#FFFFFF"))
-        font = QFont()
-        font.setPointSize(14)
+        font = QFont("Inter", 12)
         font.setBold(True)
         painter.setFont(font)
         painter.drawText(QRectF(0, 0, size, size), Qt.AlignCenter, initial)
@@ -148,22 +144,32 @@ class ChatListItemWidget(QWidget):
 
 
 class ChatListWidget(QWidget):
-    """300px sidebar widget for chat discovery, filtering, and progressive selection."""
+    """280px sidebar widget for chat discovery, debounced selection, and collapsible rail."""
 
     chat_selected = Signal(object)  # Emits TelegramChat (64-bit safe)
     refresh_requested = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setMinimumWidth(260)
-        self.setMaximumWidth(340)
-        self.resize(300, 700)
+        self.setMinimumWidth(72)
+        self.setMaximumWidth(280)
+        self.resize(280, 700)
         self._all_chats: List[TelegramChat] = []
         self._current_filter: str = "ALL"
+        self._is_collapsed: bool = False
+        self._pending_chat: Optional[TelegramChat] = None
+
+        # 150ms debounce timer for rapid clicking through chats
+        self._debounce_timer = QTimer(self)
+        self._debounce_timer.setSingleShot(True)
+        self._debounce_timer.setInterval(150)
+        self._debounce_timer.timeout.connect(self._emit_debounced_chat)
+
         self._init_ui()
 
     def _init_ui(self):
-        self.setStyleSheet("background-color: #18181B; border-right: 1px solid #3F3F46;")
+        tokens = theme_manager.get_active_tokens()
+        self.setStyleSheet(f"background-color: {tokens['bg_surface']}; border-right: 1px solid {tokens['border']};")
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(10)
@@ -171,18 +177,17 @@ class ChatListWidget(QWidget):
         # Header Bar: Chats Title + Refresh button
         header_layout = QHBoxLayout()
         header_title = QLabel("Chats")
-        header_font = QFont()
-        header_font.setPointSize(14)
+        header_font = QFont("Inter", 14)
         header_font.setBold(True)
         header_title.setFont(header_font)
-        header_title.setStyleSheet("color: #F4F4F5;")
+        header_title.setStyleSheet(f"color: {tokens['text_primary']};")
         header_layout.addWidget(header_title)
 
         header_layout.addStretch()
 
         self.btn_refresh = QPushButton("Refresh")
         self.btn_refresh.setObjectName("secondaryButton")
-        self.btn_refresh.setIcon(get_icon("refresh_cw", color="#A1A1AA", size=13))
+        self.btn_refresh.setIcon(get_icon("refresh_cw", color=tokens["text_secondary"], size=13))
         self.btn_refresh.setToolTip("Refresh chat list from Telegram")
         self.btn_refresh.setStyleSheet("padding: 4px 10px; font-size: 11px;")
         self.btn_refresh.clicked.connect(self.refresh_requested.emit)
@@ -196,9 +201,9 @@ class ChatListWidget(QWidget):
         self.search_input.textChanged.connect(self._apply_filter)
         layout.addWidget(self.search_input)
 
-        # Filter Tabs: All, Private, Groups, Channels, Saved Messages
+        # Filter Tabs: All, Private, Groups, Channels
         filter_layout = QHBoxLayout()
-        filter_layout.setSpacing(2)
+        filter_layout.setSpacing(4)
 
         self.btn_filter_all = QPushButton("All")
         self.btn_filter_users = QPushButton("Private")
@@ -224,23 +229,23 @@ class ChatListWidget(QWidget):
         # List Widget
         self.list_widget = QListWidget()
         self.list_widget.setStyleSheet(
-            """
-            QListWidget {
+            f"""
+            QListWidget {{
                 background-color: transparent;
                 border: none;
                 outline: none;
-            }
-            QListWidget::item {
-                border-radius: 8px;
+            }}
+            QListWidget::item {{
+                border-radius: 10px;
                 margin: 2px 0px;
-            }
-            QListWidget::item:selected {
-                background-color: #27272A;
-                border-left: 3px solid #229ED9;
-            }
-            QListWidget::item:hover:!selected {
-                background-color: #1C1C1F;
-            }
+            }}
+            QListWidget::item:selected {{
+                background-color: {tokens['bg_surface_2']};
+                border-left: 3px solid {tokens['accent']};
+            }}
+            QListWidget::item:hover:!selected {{
+                background-color: {tokens['bg_hover']};
+            }}
             """
         )
         self.list_widget.itemClicked.connect(self._on_item_clicked)
@@ -248,29 +253,24 @@ class ChatListWidget(QWidget):
 
     @property
     def chats(self) -> List[TelegramChat]:
-        """Return the current full list of discovered chats."""
         return self._all_chats
 
     def set_chats(self, chats: List[TelegramChat]):
-        """Populate the list with discovered chats."""
         self._all_chats = chats
         self._apply_filter()
 
     def _set_category_filter(self, category: str):
-        """Update active category filter."""
         self._current_filter = category
         for btn, cat in self.filter_buttons:
             btn.setChecked(cat == category)
         self._apply_filter()
 
     def _apply_filter(self):
-        """Filter chats by search query and category."""
         query = self.search_input.text().strip().lower()
         self.list_widget.clear()
 
         matched = 0
         for chat in self._all_chats:
-            # Category filter
             if self._current_filter == "CHANNEL" and chat.chat_type != ChatType.CHANNEL:
                 continue
             if self._current_filter == "GROUP" and chat.chat_type not in (ChatType.GROUP, ChatType.SUPERGROUP):
@@ -278,7 +278,6 @@ class ChatListWidget(QWidget):
             if self._current_filter == "USER" and chat.chat_type not in (ChatType.USER, ChatType.BOT, ChatType.SAVED_MESSAGES):
                 continue
 
-            # Query filter
             if query:
                 in_title = query in chat.title.lower()
                 in_username = chat.username and query in chat.username.lower()
@@ -286,7 +285,6 @@ class ChatListWidget(QWidget):
                 if not (in_title or in_username or in_id):
                     continue
 
-            # Add to list widget
             item = QListWidgetItem(self.list_widget)
             item.setSizeHint(QSize(0, 64))
             item.setData(Qt.UserRole, chat)
@@ -296,8 +294,14 @@ class ChatListWidget(QWidget):
             matched += 1
 
     def _on_item_clicked(self, item: QListWidgetItem):
-        """Handle chat selection in the list."""
+        """Handle chat selection with 150ms debounce to eliminate lag on fast clicking."""
         chat: TelegramChat = item.data(Qt.UserRole)
         if chat:
-            logger.info("Selected chat: %s (ID: %d)", chat.display_name, chat.id)
-            self.chat_selected.emit(chat)
+            self._pending_chat = chat
+            self._debounce_timer.start()
+
+    def _emit_debounced_chat(self):
+        """Emit chat selection signal after debounce window settles."""
+        if self._pending_chat:
+            logger.info("Debounced selected chat: %s (ID: %d)", self._pending_chat.display_name, self._pending_chat.id)
+            self.chat_selected.emit(self._pending_chat)

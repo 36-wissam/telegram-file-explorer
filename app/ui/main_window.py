@@ -272,6 +272,8 @@ class MainWindow(QMainWindow):
         )
         self.media_browser.file_selected.connect(self._on_file_selected)
         self.media_browser.file_double_clicked.connect(self._on_file_double_clicked)
+        self.media_browser.download_requested.connect(self._on_download_file)
+        self.media_browser.open_requested.connect(self._on_open_file)
         self.media_browser.set_client_manager(self.client_manager)
         self.main_splitter.addWidget(self.media_browser)
 
@@ -566,15 +568,19 @@ class MainWindow(QMainWindow):
         dialog.theme_changed.connect(self._apply_theme)
         dialog.exec()
 
-    def _apply_theme(self, theme_name: str):
-        """Switch application stylesheet dynamically."""
-        app = QApplication.instance()
-        if not app:
-            return
-        if theme_name == "light":
-            app.setStyleSheet(LIGHT_THEME)
+    def _on_open_file(self, file_model: IndexedFileModel):
+        """Open downloaded file in system viewer, or launch preview dialog if not yet downloaded."""
+        local_path = settings.download_dir / file_model.filename
+        if local_path.exists():
+            from ..services.preview import PreviewService
+            PreviewService.open_in_system_viewer(str(local_path))
         else:
-            app.setStyleSheet(DARK_THEME)
+            self._on_file_double_clicked(file_model)
+
+    def _apply_theme(self, theme_name: str):
+        """Switch application stylesheet dynamically using Obsidian ThemeManager."""
+        from .theme_manager import theme_manager
+        theme_manager.set_theme(theme_name)
 
     def open_login_dialog(self):
         """Switch to landing page and focus inline authentication card."""

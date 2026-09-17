@@ -7,7 +7,7 @@ from PySide6.QtWidgets import QApplication
 from app.core.config import settings
 from app.core.logger import setup_logging, get_logger
 from app.ui.main_window import MainWindow
-from app.ui.styles import DARK_THEME
+from app.ui.theme_manager import theme_manager
 
 
 def parse_args(args=None):
@@ -54,8 +54,8 @@ def main():
     app.setApplicationName(settings.app_name)
     app.setApplicationVersion(settings.app_version)
 
-    # Apply application-wide dark styling
-    app.setStyleSheet(DARK_THEME)
+    # Apply Obsidian theme before main window is shown to avoid visual flash
+    theme_manager.set_theme(theme_manager.current_theme_mode)
 
     # Create and show main window
     window = MainWindow()
