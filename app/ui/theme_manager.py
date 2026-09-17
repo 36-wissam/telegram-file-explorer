@@ -113,16 +113,17 @@ class ThemeManager(QObject):
             return LIGHT_TOKENS
         return DARK_TOKENS
 
-    def set_theme(self, mode: str):
+    def set_theme(self, mode: str, save: bool = True):
         if mode not in ["dark", "light", "system"]:
             mode = "system"
             
         self._current_theme_mode = mode
-        self.settings.setValue("theme_mode", mode)
+        if save:
+            self.settings.setValue("theme_mode", mode)
         
         tokens = self.get_active_tokens()
         theme_key = "light" if tokens == LIGHT_TOKENS else "dark"
-        if not hasattr(self, "_qss_cache"):
+        if not hasattr(self, "_qss_cache") or not self._qss_cache:
             self._qss_cache = {
                 "dark": self.generate_qss(DARK_TOKENS),
                 "light": self.generate_qss(LIGHT_TOKENS),
@@ -371,11 +372,89 @@ class ThemeManager(QObject):
         QLineEdit#chatSearchInput:focus {{
             border-color: {tokens["accent"]};
         }}
+        QListWidget#chatListWidget {{
+            background-color: transparent;
+            border: none;
+            outline: none;
+        }}
+        QListWidget#chatListWidget::item {{
+            border-radius: 10px;
+            margin: 2px 0px;
+        }}
+        QListWidget#chatListWidget::item:selected {{
+            background-color: {tokens["bg_surface_2"]};
+            border-left: 3px solid {tokens["accent"]};
+        }}
+        QListWidget#chatListWidget::item:hover:!selected {{
+            background-color: {tokens["bg_hover"]};
+        }}
+        QLabel#chatItemTitle {{
+            font-size: 13px;
+            font-weight: 600;
+            color: {tokens["text_primary"]};
+        }}
+        QLabel#chatItemTime {{
+            font-size: 11px;
+            color: {tokens["text_tertiary"]};
+        }}
+        QLabel#chatItemSubtitle {{
+            font-size: 12px;
+            color: {tokens["text_secondary"]};
+        }}
+        QLabel#sidebarAppTitle {{
+            font-size: 14px;
+            font-weight: 600;
+            color: {tokens["text_primary"]};
+        }}
+        QPushButton#sidebarSettingsBtn {{
+            background: transparent;
+            border: none;
+            color: {tokens["text_secondary"]};
+            text-align: left;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 13px;
+        }}
+        QPushButton#sidebarSettingsBtn:hover {{
+            background-color: {tokens["bg_hover"]};
+            color: {tokens["text_primary"]};
+        }}
 
         /* Media Browser */
         QFrame#browserTopBar {{
             background-color: {tokens["bg_base"]};
             border-bottom: 1px solid {tokens["border"]};
+        }}
+        QLabel#browserTitle {{
+            color: {tokens["text_primary"]};
+            font-size: 14px;
+            font-weight: 600;
+        }}
+        QLabel#browserCount {{
+            color: {tokens["text_tertiary"]};
+            font-size: 11px;
+        }}
+        QLabel#browserEmptyTitle {{
+            color: {tokens["text_secondary"]};
+            font-size: 13px;
+        }}
+        QPushButton#filterTabButton {{
+            background-color: transparent;
+            color: {tokens["text_secondary"]};
+            border: 1px solid {tokens["border"]};
+            border-radius: 6px;
+            padding: 4px 12px;
+            font-size: 13px;
+        }}
+        QPushButton#filterTabButton:hover {{
+            background-color: {tokens["bg_hover"]};
+            color: {tokens["text_primary"]};
+        }}
+        QPushButton#filterTabButton:checked {{
+            background-color: {tokens["accent"]};
+            color: #FFFFFF;
+            border: 1px solid {tokens["accent"]};
+            font-weight: 600;
         }}
 
         /* Preview Panel */
@@ -383,10 +462,29 @@ class ThemeManager(QObject):
             background-color: {tokens["bg_surface"]};
             border-left: 1px solid {tokens["border"]};
         }}
+        QLabel#previewHeader {{
+            color: {tokens["text_secondary"]};
+            font-size: 14px;
+            font-weight: 600;
+        }}
         QFrame#previewThumbBox {{
             background-color: {tokens["bg_surface_2"]};
             border: 1px solid {tokens["border"]};
             border-radius: 10px;
+        }}
+        QLabel#previewThumbLabel {{
+            color: {tokens["text_tertiary"]};
+            background: transparent;
+            border: none;
+        }}
+        QLabel#previewName {{
+            color: {tokens["text_primary"]};
+            font-size: 13px;
+            font-weight: 500;
+        }}
+        QLabel#previewMeta {{
+            color: {tokens["text_tertiary"]};
+            font-size: 11px;
         }}
         QFrame#previewDivider {{
             background-color: {tokens["border"]};
@@ -403,15 +501,79 @@ class ThemeManager(QObject):
             border: 1px solid {tokens["border"]};
             border-radius: 10px;
         }}
+        QLabel#settingsTitle {{
+            font-size: 18px;
+            font-weight: 600;
+            color: {tokens["text_primary"]};
+        }}
         QLabel#settingsHeader {{
             color: {tokens["text_secondary"]};
             font-size: 14px;
             font-weight: 600;
         }}
+        QLabel#settingsUserName {{
+            font-size: 13px;
+            font-weight: 600;
+            color: {tokens["text_primary"]};
+        }}
+        QLabel#settingsUserHandle {{
+            font-size: 11px;
+            color: {tokens["text_secondary"]};
+        }}
+        QLineEdit#dlPathInput {{
+            background-color: {tokens["bg_base"]};
+            border: 1px solid {tokens["border"]};
+            border-radius: 6px;
+            color: {tokens["text_primary"]};
+            padding: 0 10px;
+            font-size: 12px;
+        }}
+        QLabel#cacheSizeLabel {{
+            font-size: 11px;
+            font-weight: 500;
+            color: {tokens["text_primary"]};
+        }}
+        QLabel#concurrentLabel {{
+            font-size: 12px;
+            font-weight: 500;
+            color: {tokens["text_primary"]};
+        }}
         QFrame#stepperFrame {{
             background-color: {tokens["bg_surface"]};
             border: 1px solid {tokens["border"]};
             border-radius: 6px;
+        }}
+        QPushButton#stepperBtn {{
+            background: transparent;
+            border: none;
+            color: {tokens["text_primary"]};
+            font-family: "Inter", sans-serif;
+            font-size: 12px;
+            font-weight: bold;
+        }}
+        QPushButton#stepperBtn:hover {{
+            color: {tokens["accent"]};
+        }}
+        QLabel#stepperVal {{
+            background: transparent;
+            border: none;
+            color: {tokens["text_primary"]};
+            font-family: "Inter", sans-serif;
+            font-size: 12px;
+            font-weight: bold;
+        }}
+        QLabel#aboutTitle {{
+            font-size: 13px;
+            font-weight: 600;
+            color: {tokens["text_primary"]};
+        }}
+        QLabel#aboutMeta {{
+            font-size: 11px;
+            color: {tokens["text_tertiary"]};
+        }}
+        QLabel#aboutDesc {{
+            font-size: 11px;
+            color: {tokens["text_secondary"]};
         }}
         """
         return qss

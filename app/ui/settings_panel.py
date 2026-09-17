@@ -107,8 +107,8 @@ class SettingsPanel(QFrame):
         # Header Row: Title "Settings" + Close 'x' button
         header_row = QHBoxLayout()
         self.header_title = QLabel("Settings")
+        self.header_title.setObjectName("settingsTitle")
         self.header_title.setFont(get_title_font("Settings"))
-        self.header_title.setStyleSheet(f"color: {tokens['text_primary']};")
         header_row.addWidget(self.header_title)
 
         header_row.addStretch()
@@ -165,15 +165,15 @@ class SettingsPanel(QFrame):
         user_info = QVBoxLayout()
         user_info.setSpacing(2)
         self.lbl_user_display_name = QLabel("Telegram User")
+        self.lbl_user_display_name.setObjectName("settingsUserName")
         self.lbl_user_display_name.setFont(get_body_font("User"))
-        self.lbl_user_display_name.setStyleSheet(f"color: {tokens['text_primary']}; font-weight: 600;")
         user_info.addWidget(self.lbl_user_display_name)
 
         status_row = QHBoxLayout()
         status_row.setSpacing(4)
         self.lbl_username = QLabel("@user")
+        self.lbl_username.setObjectName("settingsUserHandle")
         self.lbl_username.setFont(get_caption_font())
-        self.lbl_username.setStyleSheet(f"color: {tokens['text_secondary']};")
 
         self.lbl_status_badge = QLabel("Connected")
         self.lbl_status_badge.setFont(get_caption_font())
@@ -256,22 +256,12 @@ class SettingsPanel(QFrame):
         dl_card_layout.setSpacing(8)
 
         self.dl_path_input = QLineEdit(self._pending_download_dir)
+        self.dl_path_input.setObjectName("dlPathInput")
         self.dl_path_input.setReadOnly(True)
         self.dl_path_input.setFixedHeight(34)
         self.dl_path_input.setFont(get_secondary_font())
         self.dl_path_input.setMinimumWidth(0)
         self.dl_path_input.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        self.dl_path_input.setStyleSheet(
-            f"""
-            QLineEdit {{
-                background-color: {tokens['bg_base']};
-                border: 1px solid {tokens['border']};
-                border-radius: 6px;
-                color: {tokens['text_primary']};
-                padding: 0 10px;
-            }}
-            """
-        )
         dl_card_layout.addWidget(self.dl_path_input)
 
         self.btn_browse = AnimatedHoverButton(
@@ -303,8 +293,8 @@ class SettingsPanel(QFrame):
         cache_card_layout.setSpacing(6)
 
         self.cache_size_label = QLabel("Cache (الذاكرة المؤقتة): 0 MB")
+        self.cache_size_label.setObjectName("cacheSizeLabel")
         self.cache_size_label.setFont(get_caption_font())
-        self.cache_size_label.setStyleSheet(f"color: {tokens['text_primary']}; font-weight: 500;")
         self.cache_size_label.setMinimumWidth(0)
         self.cache_size_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         self.cache_size_label.setWordWrap(False)
@@ -338,8 +328,8 @@ class SettingsPanel(QFrame):
         concurrent_card_layout.setSpacing(6)
 
         self.concurrent_label = QLabel("Concurrent Downloads")
+        self.concurrent_label.setObjectName("concurrentLabel")
         self.concurrent_label.setFont(get_secondary_font())
-        self.concurrent_label.setStyleSheet(f"color: {tokens['text_primary']}; font-weight: 500;")
         self.concurrent_label.setMinimumWidth(0)
         self.concurrent_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         concurrent_card_layout.addWidget(self.concurrent_label)
@@ -353,25 +343,25 @@ class SettingsPanel(QFrame):
         stepper_layout.setSpacing(0)
 
         self.btn_minus = QPushButton("-")
+        self.btn_minus.setObjectName("stepperBtn")
         self.btn_minus.setFixedSize(22, 24)
         self.btn_minus.setFont(QFont("Inter", 12, QFont.Bold))
         self.btn_minus.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_minus.setStyleSheet(f"background: transparent; border: none; color: {tokens['text_primary']};")
         self.btn_minus.clicked.connect(self._decrement_concurrent)
         stepper_layout.addWidget(self.btn_minus)
 
         self.concurrent_val_label = QLabel(str(self._pending_concurrency))
+        self.concurrent_val_label.setObjectName("stepperVal")
         self.concurrent_val_label.setFixedWidth(22)
         self.concurrent_val_label.setAlignment(Qt.AlignCenter)
         self.concurrent_val_label.setFont(QFont("Inter", 12, QFont.Bold))
-        self.concurrent_val_label.setStyleSheet(f"background: transparent; border: none; color: {tokens['text_primary']};")
         stepper_layout.addWidget(self.concurrent_val_label)
 
         self.btn_plus = QPushButton("+")
+        self.btn_plus.setObjectName("stepperBtn")
         self.btn_plus.setFixedSize(22, 24)
         self.btn_plus.setFont(QFont("Inter", 12, QFont.Bold))
         self.btn_plus.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_plus.setStyleSheet(f"background: transparent; border: none; color: {tokens['text_primary']};")
         self.btn_plus.clicked.connect(self._increment_concurrent)
         stepper_layout.addWidget(self.btn_plus)
 
@@ -463,18 +453,18 @@ class SettingsPanel(QFrame):
         about_card_layout.setSpacing(4)
 
         self.about_title = QLabel("Telegram File Explorer")
+        self.about_title.setObjectName("aboutTitle")
         self.about_title.setFont(get_body_font("Telegram File Explorer"))
-        self.about_title.setStyleSheet(f"color: {tokens['text_primary']}; font-weight: 600;")
         about_card_layout.addWidget(self.about_title)
 
         self.version_label = QLabel(f"Version {settings.app_version}")
+        self.version_label.setObjectName("aboutMeta")
         self.version_label.setFont(get_caption_font())
-        self.version_label.setStyleSheet(f"color: {tokens['text_tertiary']};")
         about_card_layout.addWidget(self.version_label)
 
         self.desc_label = QLabel("Local-first Telegram MTProto desktop file explorer.")
+        self.desc_label.setObjectName("aboutDesc")
         self.desc_label.setFont(get_caption_font())
-        self.desc_label.setStyleSheet(f"color: {tokens['text_secondary']};")
         self.desc_label.setWordWrap(True)
         about_card_layout.addWidget(self.desc_label)
 
@@ -502,14 +492,7 @@ class SettingsPanel(QFrame):
         self._update_localized_ui()
 
     def _apply_panel_style(self, tokens: dict):
-        self.setStyleSheet(
-            f"""
-            QFrame#settingsPanel {{
-                background-color: {tokens['bg_surface']};
-                border-left: 1px solid {tokens['border']};
-            }}
-            """
-        )
+        pass  # Styled via global QSS QFrame#settingsPanel
 
     def set_user_info(self, name: str, username: str = ""):
         self.lbl_user_display_name.setText(name or "Telegram User")
@@ -534,7 +517,7 @@ class SettingsPanel(QFrame):
     def _on_theme_preview(self, mode: str):
         self._pending_theme = mode
         self.theme_segmented.set_value(mode)
-        theme_manager.set_theme(mode)
+        theme_manager.set_theme(mode, save=False)
 
     def _on_theme_pill_clicked(self, mode: str):
         self._on_theme_preview(mode)
@@ -646,12 +629,18 @@ class SettingsPanel(QFrame):
             self.logout_requested.emit()
 
     def _on_apply_clicked(self):
-        """Commit pending changes to QSettings and real application state."""
+        """Commit pending changes to QSettings and real application state without lag."""
         self._saved_theme = self._pending_theme
-        theme_manager.set_theme(self._saved_theme)
+        if theme_manager.current_theme_mode != self._saved_theme:
+            theme_manager.set_theme(self._saved_theme)
+        else:
+            theme_manager.settings.setValue("theme_mode", self._saved_theme)
 
         self._saved_language = self._pending_language
-        theme_manager.set_language(self._saved_language)
+        if theme_manager.get_current_language() != self._saved_language:
+            theme_manager.set_language(self._saved_language)
+        else:
+            self.app_settings.setValue("language", self._saved_language)
 
         if self._pending_download_dir:
             settings.download_dir = Path(self._pending_download_dir)
@@ -662,8 +651,7 @@ class SettingsPanel(QFrame):
 
         is_ar = (self._saved_language == "ar")
         self.btn_apply.setText("تم التطبيق" if is_ar else "Applied")
-        tokens = theme_manager.get_active_tokens()
-        self.btn_apply.setIcon(get_icon("check", color=tokens.get("text_primary", "#FFFFFF"), size=14))
+        self.btn_apply.setIcon(get_icon("check", color="#FFFFFF", size=14))
         self.btn_apply.setEnabled(False)
 
         def restore_btn():

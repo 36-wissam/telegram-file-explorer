@@ -150,8 +150,8 @@ class ChatListItemWidget(QWidget):
         top_row.setSpacing(6)
 
         title_label = QLabel(self.chat.display_name)
+        title_label.setObjectName("chatItemTitle")
         title_label.setFont(get_font_for_text(self.chat.display_name, pixel_size=13, weight=600))
-        title_label.setStyleSheet(f"color: {tokens['text_primary']};")
         top_row.addWidget(title_label)
 
         top_row.addStretch()
@@ -160,8 +160,8 @@ class ChatListItemWidget(QWidget):
         if self.chat.last_message_date:
             time_str = self.chat.last_message_date.strftime("%H:%M")
         time_label = QLabel(time_str)
+        time_label.setObjectName("chatItemTime")
         time_label.setFont(get_caption_font(time_str))
-        time_label.setStyleSheet(f"color: {tokens['text_tertiary']};")
         top_row.addWidget(time_label)
 
         text_layout.addLayout(top_row)
@@ -171,8 +171,8 @@ class ChatListItemWidget(QWidget):
 
         info_text = f"@{self.chat.username}" if self.chat.username else self.chat.chat_type.value
         subtitle_label = QLabel(info_text)
+        subtitle_label.setObjectName("chatItemSubtitle")
         subtitle_label.setFont(get_secondary_font(info_text))
-        subtitle_label.setStyleSheet(f"color: {tokens['text_secondary']};")
         bottom_row.addWidget(subtitle_label)
 
         bottom_row.addStretch()
@@ -269,8 +269,8 @@ class ChatListWidget(QWidget):
         header_row.addWidget(self.btn_user_avatar)
 
         self.lbl_app_title = QLabel("Telegram File Explorer")
+        self.lbl_app_title.setObjectName("sidebarAppTitle")
         self.lbl_app_title.setFont(get_section_header_font("Telegram File Explorer"))
-        self.lbl_app_title.setStyleSheet(f"color: {tokens['text_primary']}; font-weight: 600;")
         header_row.addWidget(self.lbl_app_title)
 
         header_row.addStretch()
@@ -305,51 +305,17 @@ class ChatListWidget(QWidget):
 
         # Chat List Widget
         self.list_widget = QListWidget()
-        self.list_widget.setStyleSheet(
-            f"""
-            QListWidget {{
-                background-color: transparent;
-                border: none;
-                outline: none;
-            }}
-            QListWidget::item {{
-                border-radius: 10px;
-                margin: 2px 0px;
-            }}
-            QListWidget::item:selected {{
-                background-color: {tokens['bg_surface_2']};
-                border-left: 3px solid {tokens['accent']};
-            }}
-            QListWidget::item:hover:!selected {{
-                background-color: {tokens['bg_hover']};
-            }}
-            """
-        )
+        self.list_widget.setObjectName("chatListWidget")
         self.list_widget.itemClicked.connect(self._on_list_item_clicked)
         exp_layout.addWidget(self.list_widget)
 
         # Bottom Settings Row
         bottom_settings_row = QHBoxLayout()
         self.btn_settings_expanded = QPushButton("Settings")
+        self.btn_settings_expanded.setObjectName("sidebarSettingsBtn")
         self.btn_settings_expanded.setIcon(get_icon("settings", color=tokens["text_secondary"], size=18))
         self.btn_settings_expanded.setFont(get_body_font("Settings"))
         self.btn_settings_expanded.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_settings_expanded.setStyleSheet(
-            f"""
-            QPushButton {{
-                background: transparent;
-                border: none;
-                color: {tokens['text_secondary']};
-                text-align: left;
-                padding: 8px 12px;
-                border-radius: 6px;
-            }}
-            QPushButton:hover {{
-                background-color: {tokens['bg_hover']};
-                color: {tokens['text_primary']};
-            }}
-            """
-        )
         self.btn_settings_expanded.clicked.connect(self.settings_clicked.emit)
         bottom_settings_row.addWidget(self.btn_settings_expanded)
         exp_layout.addLayout(bottom_settings_row)

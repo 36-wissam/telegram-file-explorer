@@ -264,8 +264,8 @@ class ChatMediaBrowserWidget(QWidget):
         empty_layout.addWidget(self.empty_icon_label)
 
         self.empty_title = QLabel("Select a chat to view files")
+        self.empty_title.setObjectName("browserEmptyTitle")
         self.empty_title.setFont(get_body_font("Select a chat to view files"))
-        self.empty_title.setStyleSheet(f"color: {tokens['text_secondary']};")
         self.empty_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         empty_layout.addWidget(self.empty_title)
 
@@ -296,13 +296,13 @@ class ChatMediaBrowserWidget(QWidget):
         info_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
 
         self.title_label = QLabel("Select Chat")
+        self.title_label.setObjectName("browserTitle")
         self.title_label.setFont(get_font_for_text(self.title_label.text(), pixel_size=14, weight=600))
-        self.title_label.setStyleSheet(f"color: {tokens['text_primary']};")
         info_layout.addWidget(self.title_label)
 
         self.count_label = QLabel("0 files")
+        self.count_label.setObjectName("browserCount")
         self.count_label.setFont(get_caption_font("0 files"))
-        self.count_label.setStyleSheet(f"color: {tokens['text_tertiary']};")
         info_layout.addWidget(self.count_label)
 
         # Subtitle label compatibility for legacy tests

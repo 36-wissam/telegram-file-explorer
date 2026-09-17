@@ -33,7 +33,7 @@ from PySide6.QtWidgets import (
 )
 
 from .fonts import get_body_font
-from .theme_manager import theme_manager
+from .theme_manager import DARK_TOKENS, theme_manager
 
 
 class AnimatedHoverButton(QPushButton):
@@ -274,8 +274,11 @@ class AnimatedSegmentedControl(QFrame):
             pill_path = QPainterPath()
             pill_path.addRoundedRect(pill_rect, 4, 4)
 
-            # Accent-muted background
-            painter.fillPath(pill_path, QColor(tokens["accent_muted"]))
+            # Accent-muted background: Qt QColor cannot parse 'rgba(...)' string constructor
+            is_dark = (tokens.get("bg_base") == DARK_TOKENS["bg_base"])
+            accent_color = QColor(tokens["accent"])
+            accent_color.setAlphaF(0.12 if is_dark else 0.10)
+            painter.fillPath(pill_path, accent_color)
 
         painter.end()
         super().paintEvent(event)

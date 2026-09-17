@@ -58,14 +58,6 @@ class PreviewPanel(QFrame):
 
     def _init_ui(self):
         tokens = theme_manager.get_active_tokens()
-        self.setStyleSheet(
-            f"""
-            QFrame#previewPanel {{
-                background-color: {tokens['bg_surface']};
-                border-left: 1px solid {tokens['border']};
-            }}
-            """
-        )
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 16, 20, 20)
@@ -76,8 +68,8 @@ class PreviewPanel(QFrame):
         header_row.setContentsMargins(0, 0, 0, 0)
 
         header_label = QLabel("Preview")
+        header_label.setObjectName("previewHeader")
         header_label.setFont(get_section_header_font("Preview"))
-        header_label.setStyleSheet(f"color: {tokens['text_secondary']};")
         header_row.addWidget(header_label)
 
         header_row.addStretch()
@@ -120,8 +112,8 @@ class PreviewPanel(QFrame):
         t_box_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.thumb_label = QLabel("No File Selected")
+        self.thumb_label.setObjectName("previewThumbLabel")
         self.thumb_label.setFont(get_caption_font("No File Selected"))
-        self.thumb_label.setStyleSheet(f"color: {tokens['text_tertiary']}; background: transparent; border: none;")
         self.thumb_label.setFixedSize(96, 96)
         self.thumb_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         t_box_layout.addWidget(self.thumb_label)
@@ -131,8 +123,8 @@ class PreviewPanel(QFrame):
 
         # 3. Filename (Body font, max 2 lines with eliding)
         self.name_label = QLabel("No file selected")
+        self.name_label.setObjectName("previewName")
         self.name_label.setFont(get_body_font("Filename"))
-        self.name_label.setStyleSheet(f"color: {tokens['text_primary']}; font-weight: 500;")
         self.name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.name_label.setWordWrap(True)
         self.name_label.setMaximumHeight(44)
@@ -143,14 +135,14 @@ class PreviewPanel(QFrame):
         meta_container.setSpacing(4)
 
         self.size_label = QLabel("Size: -")
+        self.size_label.setObjectName("previewMeta")
         self.size_label.setFont(get_caption_font("Size: -"))
-        self.size_label.setStyleSheet(f"color: {tokens['text_tertiary']};")
         self.size_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         meta_container.addWidget(self.size_label)
 
         self.type_label = QLabel("Type: -")
+        self.type_label.setObjectName("previewMeta")
         self.type_label.setFont(get_caption_font("Type: -"))
-        self.type_label.setStyleSheet(f"color: {tokens['text_tertiary']};")
         self.type_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         meta_container.addWidget(self.type_label)
 
